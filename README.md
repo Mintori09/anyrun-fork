@@ -14,6 +14,13 @@ I tested it in Kde plasma.
 
 ## Features
 
+### New Features
+
+- **Scroll when full:** When the number of matches exceeds the window height or the `maxEntries` limit, you can effortlessly scroll through the list using your mouse or touchpad.
+- **GTK4 Integration:** The scrolling behavior is native to GTK4, ensuring smooth performance and support for kinetic scrolling.
+
+### Standard Features
+
 - **Style Customizability:** Full control via GTK4 CSS.
 - **Mouse Scroll Support:** Navigate through result entries using the mouse wheel.
 - **Extensible Plugin System:** If it can handle input and selection, Anyrun can run it.
@@ -157,13 +164,13 @@ This fork includes several specialized plugins to enhance your workflow. Add the
 
 ### New & Enhanced Plugins
 
-- **Applications (`libanyrun_applications.so`)**: Enhanced search and execution for desktop entries.
-- **Calc (`libanyrun_calc.so`)**: A fast, lightweight calculator for mathematical expressions.
-- **Findfiles (`libanyrun_findfiles.so`)**: Efficient file searching within your home directory or specified paths.
-- **Shell Wrapper (`libanyrun_shell_wrapper.so`)**: An improved wrapper for executing shell commands with better feedback.
-- **Universal Action (`libanyrun_universal_action.so`)**: Context-aware actions for various types of input and files.
-- **Websearch (`libanyrun_websearch.so`)**: Search the web using engines like Google, DuckDuckGo, and Bing.
-- **Zoxide (`libanyrun_zoxide.so`)**: Quick directory jumping powered by [Zoxide](https://github.com/ajeetdsouza/zoxide).
+- **Applications (`applications.so`)**: Enhanced search and execution for desktop entries.
+- **Calc (`calc.so`)**: A fast, lightweight calculator for mathematical expressions.
+- **Findfiles (`findfiles.so`)**: Efficient file searching within your home directory or specified paths.
+- **Shell Wrapper (`shell_wrapper.so`)**: An improved wrapper for executing shell commands with better feedback.
+- **Universal Action (`universal_action.so`)**: Context-aware actions for various types of input and files.
+- **Websearch (`websearch.so`)**: Search the web using engines like Google, DuckDuckGo, and Bing.
+- **Zoxide (`zoxide.so`)**: Quick directory jumping powered by [Zoxide](https://github.com/ajeetdsouza/zoxide).
 
 ### Standard Plugins
 
