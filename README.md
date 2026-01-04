@@ -1,59 +1,57 @@
-# Anyrun
+# Anyrun (Fork)
 
-A wayland native krunner-like runner, made with customizability in mind.
+A Wayland-native runner, similar to KRunner, built with extreme customizability in mind. This fork includes additional plugins and features such as mouse scroll support.
 
-<img width="950" height="702" alt="image" src="https://github.com/user-attachments/assets/0a53b435-58f5-4a7c-90f7-b3f39266f2f4" />
+I tested it in Kde plasma.
+
+<img width="950" height="702" alt="image" src="/image/Screenshot_20260104_181124.png" />
 
 > [!NOTE]
-> If you use Nvidia and Anyrun refuses to close for you, you need to set `GSK_RENDERER=ngl` for Anyrun.
-> As in, running it with `GSK_RENDERER=ngl anyrun`. This is a [known issue](https://forums.developer.nvidia.com/t/580-65-06-gtk-4-apps-hang-when-attempting-to-exit-close/341308/6)
-> and is quite driver version dependent.
+> If you use Nvidia and Anyrun refuses to close, you need to set `GSK_RENDERER=ngl`.
+> Run it as: `GSK_RENDERER=ngl anyrun`. This is a [known issue](https://forums.developer.nvidia.com/t/580-65-06-gtk-4-apps-hang-when-attempting-to-exit-close/341308/6) dependent on driver versions.
+
+---
 
 ## Features
 
-- Style customizability with GTK4 CSS
-  - More info in [Styling](#Styling)
-- Can do basically anything
-  - As long as it can work with input and selection
-  - Hence the name Anyrun
-- Easy to make plugins
-  - You only need 4 functions!
-  - See [Rink](plugins/rink) for a simple example. More info in the
-    documentation of the [anyrun-plugin](anyrun-plugin) crate.
-- Responsive
-  - Asynchronous running of plugin functions
-- Wayland native
-  - GTK4 layer shell for overlaying the window
-  - data-control for managing the clipboard
+- **Style Customizability:** Full control via GTK4 CSS.
+- **Mouse Scroll Support:** Navigate through result entries using the mouse wheel.
+- **Extensible Plugin System:** If it can handle input and selection, Anyrun can run it.
+- **Easy Development:** Create custom plugins with just 4 functions using the `anyrun-plugin` crate.
+- **Responsive:** Asynchronous execution of plugin functions ensures the UI never hangs.
+- **Wayland Native:** Uses GTK4 layer shell for overlays and data-control for clipboard management.
 
-## Usage
-
-### Dependencies
-
-Anyrun mainly depends various GTK4 libraries, and rust of course for building the
-project. Rust you can get with [rustup](https://rustup.rs). The rest are
-statically linked in the binary. Here are the libraries you need to have to
-build & run it:
-
-- `gtk4-layer-shell (libgtk4-layer-shell)`
-- `gtk4 (libgtk-4 libgdk-4)`
-- `pango (libpango-1.0)`
-- `cairo (libcairo libcairo-gobject)`
-- `gdk-pixbuf2 (libgdk_pixbuf-2.0)`
-- `glib2 (libgobject-2.0 libgio-2.0 libglib-2.0)`
-
-> [!NOTE]
-> Since 25.12.0, Anyrun also depends on [anyrun-provider](https://github.com/anyrun-org/anyrun-provider)
-> to provide search results. Make sure it is installed as well for Anyrun to function. If you don't want to install
-> it into your `$PATH`, you can set the path to it via the `provider` config option.
+---
 
 ## Installation
 
-[![Packaging status](https://repology.org/badge/vertical-allrepos/anyrun.svg)](https://repology.org/project/anyrun/versions)
+### Manual installation
+
+Make sure all of the dependencies are installed, and then run the following
+commands in order:
+
+```bash
+# Clone the repository and move to the cloned location
+git clone https://github.com/mintori09/anyrun-fork && cd anyrun-fork
+
+# Build all packages, and install the Anyrun binary
+cargo build --release
+cargo install --path anyrun/
+
+# Create the config directory and the plugins subdirectory
+mkdir -p ~/.config/anyrun/plugins
+
+# Copy all of the built plugins to the correct directory
+cp target/release/*.so ~/.config/anyrun/plugins
+
+# Copy the default config file
+cp examples/config.ron ~/.config/anyrun/config.ron
+cp examples/style.css ~/.config/anyrun/style.css
+```
+
+---
 
 ### Nix
-
-An Anyrun package that contains all the official plugins is available in [nixpkgs](https://search.nixos.org/packages?channel=unstable&show=anyrun&from=0&size=50&sort=relevance&type=packages&query=anyrun).
 
 #### Home-Manager module
 
@@ -153,37 +151,22 @@ nix.settings = {
 > cause cache misses, i.e., you will have to build from source every time. To use
 > the cache, do _not_ override the Nixpkgs input.
 
-### Manual installation
-
-Make sure all of the dependencies are installed, and then run the following
-commands in order:
-
-```bash
-# Clone the repository and move to the cloned location
-git clone https://github.com/anyrun-org/anyrun && cd anyrun
-
-# Build all packages, and install the Anyrun binary
-cargo build --release
-cargo install --path anyrun/
-
-# Create the config directory and the plugins subdirectory
-mkdir -p ~/.config/anyrun/plugins
-
-# Copy all of the built plugins to the correct directory
-cp target/release/*.so ~/.config/anyrun/plugins
-
-# Copy the default config file
-cp examples/config.ron ~/.config/anyrun/config.ron
-```
-
 ## Plugins
 
-Anyrun requires plugins to function, as they provide the results for input. The
-library name after the plugin name is what you use for including the plugin
-inside the configuration. The list of plugins in this repository is as follows:
+This fork includes several specialized plugins to enhance your workflow. Add the `.so` files to your `config.ron` to enable them.
 
-- [Applications](plugins/applications/README.md) `libapplications.so`
-  - Search and run system & user specific desktop entries.
+### New & Enhanced Plugins
+
+- **Applications (`libanyrun_applications.so`)**: Enhanced search and execution for desktop entries.
+- **Calc (`libanyrun_calc.so`)**: A fast, lightweight calculator for mathematical expressions.
+- **Findfiles (`libanyrun_findfiles.so`)**: Efficient file searching within your home directory or specified paths.
+- **Shell Wrapper (`libanyrun_shell_wrapper.so`)**: An improved wrapper for executing shell commands with better feedback.
+- **Universal Action (`libanyrun_universal_action.so`)**: Context-aware actions for various types of input and files.
+- **Websearch (`libanyrun_websearch.so`)**: Search the web using engines like Google, DuckDuckGo, and Bing.
+- **Zoxide (`libanyrun_zoxide.so`)**: Quick directory jumping powered by [Zoxide](https://github.com/ajeetdsouza/zoxide).
+
+### Standard Plugins
+
 - [Symbols](plugins/symbols/README.md) `libsymbols.so`
   - Search unicode symbols.
 - [Rink](plugins/rink/README.md) `librink.so`
@@ -208,6 +191,8 @@ inside the configuration. The list of plugins in this repository is as follows:
   - `nix run` graphical applications straight from Anyrun.
 - [niri-focus](plugins/niri-focus/README.md) `libniri_focus.so`
   - Focus active windows with fuzzy search on niri.
+
+---
 
 ## Configuration
 
