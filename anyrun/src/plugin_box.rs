@@ -25,6 +25,11 @@ impl FactoryComponent for PluginMatch {
         gtk::ListBoxRow {
             set_css_classes: &["match"],
             set_height_request: 32,
+            set_focusable: false,
+            set_can_focus: false,
+            set_can_target: true,
+            set_activatable: false,
+
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 10,
