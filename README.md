@@ -30,9 +30,8 @@ Anyrun mainly depends various GTK4 libraries, and rust of course for building th
     gdk-pixbuf2 (libgdk_pixbuf-2.0)
     glib2 (libgobject-2.0 libgio-2.0 libglib-2.0)
 
-Note
-
-Since 25.12.0, Anyrun also depends on anyrun-provider to provide search results. Make sure it is installed as well for Anyrun to function. If you don't want to install it into your $PATH, you can set the path to it via the provider config option.
+> [!NOTE]
+> Since 25.12.0, Anyrun also depends on anyrun-provider to provide search results. Make sure it is installed as well for Anyrun to function. If you don't want to install it into your $PATH, you can set the path to it via the provider config option.
 
 ---
 
@@ -40,7 +39,7 @@ Since 25.12.0, Anyrun also depends on anyrun-provider to provide search results.
 
 ### New Features
 
-- **Scroll when full:** When the number of matches exceeds the window height or the `maxEntries` limit, you can effortlessly scroll through the list using your mouse or touchpad. (Temp: i fixed max_height is half height screen)
+- **Scroll when full:** When the number of matches exceeds the window height or the `maxEntries` limit, you can effortlessly scroll through the list using your mouse or touchpad. (Temp: i fixed max_height is half of height screen)
 - **GTK4 Integration:** The scrolling behavior is native to GTK4, ensuring smooth performance and support for kinetic scrolling.
 
 ### Standard Features
