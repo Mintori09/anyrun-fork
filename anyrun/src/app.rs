@@ -22,22 +22,22 @@ use tokio::sync::mpsc;
 
 const DEFAULT_CSS: &str = include_str!("../res/style.css");
 
-fn simple_log(message: &str) {
-    if let Ok(home) = env::var("HOME") {
-        let mut path = PathBuf::from(home);
-        path.push("Desktop");
-        path.push("log.txt");
-
-        let file = OpenOptions::new().create(true).append(true).open(path);
-
-        if let Ok(mut file) = file {
-            let now = Local::now().format("%Y-%m-%d %H:%M:%S");
-
-            let log_entry = format!("[{}] {}\n", now, message);
-            let _ = file.write_all(log_entry.as_bytes());
-        }
-    }
-}
+// fn simple_log(message: &str) {
+//     if let Ok(home) = env::var("HOME") {
+//         let mut path = PathBuf::from(home);
+//         path.push("Desktop");
+//         path.push("log.txt");
+//
+//         let file = OpenOptions::new().create(true).append(true).open(path);
+//
+//         if let Ok(mut file) = file {
+//             let now = Local::now().format("%Y-%m-%d %H:%M:%S");
+//
+//             let log_entry = format!("[{}] {}\n", now, message);
+//             let _ = file.write_all(log_entry.as_bytes());
+//         }
+//     }
+// }
 
 #[derive(Deserialize, Serialize)]
 pub enum PostRunAction {
@@ -231,31 +231,24 @@ impl Component for App {
                 set_hexpand: true,
                 set_css_classes: &["main"],
 
-            #[name = "entry"]
-            gtk::Text {
-                set_hexpand: true,
-                set_activates_default: false,
-                set_can_focus: true,
+                #[name = "entry"]
+                  gtk::Text {
+                  set_hexpand: true,
+                  set_activates_default: false,
+                  connect_changed[sender] => move |entry| {
+                      sender.input(AppMsg::EntryChanged(entry.text().into()));
+                  },
 
-                connect_changed[sender] => move |entry| {
-                    sender.input(AppMsg::EntryChanged(entry.text().into()));
-                },
-
-                add_controller = gtk::EventControllerKey {
-
-                    connect_key_pressed[sender] => move |_, key, _, modifier| {
-                        // simple_log(&format!("{:?}", key));
-
-                        match key {
-                            gdk::Key::Return |gdk::Key::Up | gdk::Key::Down | gdk::Key::Escape => {
-                                sender.input(AppMsg::KeyPressed { key, modifier });
-                                glib::Propagation::Stop
+                    add_controller = gtk::EventControllerKey {
+                        connect_key_pressed[sender] => move |_, key, _, modifier| {
+                            sender.input(AppMsg::KeyPressed { key, modifier});
+                            match key {
+                                gdk::Key::Tab => glib::Propagation::Stop,
+                                _ => glib::Propagation::Proceed,
                             }
-                            _ => glib::Propagation::Proceed,
                         }
                     }
-                }
-            },
+                },
                 #[name = "scroll"]
                 gtk::ScrolledWindow {
                     set_vexpand: false,
