@@ -185,11 +185,30 @@ pub fn init(config_dir: RString) -> State {
 
 #[get_matches]
 pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
-    let matcher = fuzzy_matcher::skim::SkimMatcherV2::default();
+    let input_lc = input.to_lowercase();
+    let input_trimmed = input_lc.trim();
+
+    if input_trimmed.trim().is_empty() {
+        return state
+            .entries
+            .iter()
+            .take(state.config.max_entries)
+            .map(|(entry, id)| Match {
+                title: entry.localized_name().into(),
+                description: if state.config.hide_description {
+                    ROption::RNone
+                } else {
+                    entry.desc.clone().map(|d| d.into()).into()
+                },
+                use_pango: false,
+                icon: ROption::RSome(entry.icon.clone().into()),
+                id: ROption::RSome(*id),
+            })
+            .collect();
+    }
 
     const ACTION_VERBS: &[&str] = &["quit", "close", "exit", "kill", "stop", "restart"];
-
-    let input_lc = input.to_lowercase();
+    let matcher = fuzzy_matcher::skim::SkimMatcherV2::default();
     let tokens: Vec<&str> = input_lc.split_whitespace().collect();
 
     let has_action_verb = tokens.iter().any(|t| ACTION_VERBS.contains(t));
@@ -239,7 +258,6 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
                     .max(desc_score)
                     .max(keyword_score);
 
-                // Token không match bất kỳ field nào → reject
                 if best == 0 {
                     return None;
                 }

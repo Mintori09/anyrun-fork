@@ -12,11 +12,35 @@ I tested it in Kde plasma.
 
 ---
 
+## Usage
+
+```
+anyrun daemon &
+anyrun
+```
+
+### Dependencies
+
+Anyrun mainly depends various GTK4 libraries, and rust of course for building the project. Rust you can get with rustup. The rest are statically linked in the binary. Here are the libraries you need to have to build & run it:
+
+    gtk4-layer-shell (libgtk4-layer-shell)
+    gtk4 (libgtk-4 libgdk-4)
+    pango (libpango-1.0)
+    cairo (libcairo libcairo-gobject)
+    gdk-pixbuf2 (libgdk_pixbuf-2.0)
+    glib2 (libgobject-2.0 libgio-2.0 libglib-2.0)
+
+Note
+
+Since 25.12.0, Anyrun also depends on anyrun-provider to provide search results. Make sure it is installed as well for Anyrun to function. If you don't want to install it into your $PATH, you can set the path to it via the provider config option.
+
+---
+
 ## Features
 
 ### New Features
 
-- **Scroll when full:** When the number of matches exceeds the window height or the `maxEntries` limit, you can effortlessly scroll through the list using your mouse or touchpad.
+- **Scroll when full:** When the number of matches exceeds the window height or the `maxEntries` limit, you can effortlessly scroll through the list using your mouse or touchpad. (Temp: i fixed max_height is half height screen)
 - **GTK4 Integration:** The scrolling behavior is native to GTK4, ensuring smooth performance and support for kinetic scrolling.
 
 ### Standard Features
@@ -50,6 +74,7 @@ mkdir -p ~/.config/anyrun/plugins
 
 # Copy all of the built plugins to the correct directory
 cp target/release/*.so ~/.config/anyrun/plugins
+sudo cp target/release/anyrun /usr/bin/anyrun
 
 # Copy the default config file
 cp examples/config.ron ~/.config/anyrun/config.ron
