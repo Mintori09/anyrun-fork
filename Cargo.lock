@@ -146,7 +146,7 @@ dependencies = [
  "gtk4",
  "gtk4-layer-shell",
  "relm4",
- "ron 0.8.1",
+ "ron 0.12.0",
  "serde",
  "serde_json",
  "tokio",
