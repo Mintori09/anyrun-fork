@@ -5,20 +5,39 @@ use crate::{
 };
 use anyrun_interface::HandleResult;
 use anyrun_provider_ipc as ipc;
+use chrono::Local;
 use gtk::{gdk, gio, glib, prelude::*};
 use gtk4 as gtk;
 use gtk4_layer_shell::{Edge, LayerShell};
 use relm4::{prelude::*, ComponentBuilder, Sender};
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::{env, fs::OpenOptions};
 use std::{
-    env, fs,
+    fs,
     io::{self, Write},
-    path::PathBuf,
     sync::Arc,
 };
 use tokio::sync::mpsc;
 
 const DEFAULT_CSS: &str = include_str!("../res/style.css");
+
+fn simple_log(message: &str) {
+    if let Ok(home) = env::var("HOME") {
+        let mut path = PathBuf::from(home);
+        path.push("Desktop");
+        path.push("log.txt");
+
+        let file = OpenOptions::new().create(true).append(true).open(path);
+
+        if let Ok(mut file) = file {
+            let now = Local::now().format("%Y-%m-%d %H:%M:%S");
+
+            let log_entry = format!("[{}] {}\n", now, message);
+            let _ = file.write_all(log_entry.as_bytes());
+        }
+    }
+}
 
 #[derive(Deserialize, Serialize)]
 pub enum PostRunAction {
@@ -55,6 +74,7 @@ pub struct App {
     post_run_action: PostRunAction,
     tx: mpsc::Sender<anyrun_provider_ipc::Request>,
     css_provider: gtk::CssProvider,
+    selected_index: usize,
 }
 
 impl App {
@@ -75,8 +95,43 @@ impl App {
         controller.detach_runtime();
         controller.sender().clone()
     }
+    fn sync_ui_selection(&self, widgets: &mut AppWidgets) {
+        let matches = self.combined_matches();
+        if matches.is_empty() {
+            return;
+        }
 
-    /// Helper function to get the combined matches of all the plugins
+        for plugin in self.plugins.iter() {
+            plugin
+                .matches
+                .widget()
+                .select_row(Option::<&gtk::ListBoxRow>::None);
+        }
+
+        if let Some((plugin, plugin_match)) = matches.get(self.selected_index) {
+            let listbox = plugin.matches.widget();
+            let row = &plugin_match.row;
+
+            listbox.select_row(Some(row));
+
+            let adj = widgets.scroll.vadjustment();
+
+            if let Some((_, y)) = row.translate_coordinates(&widgets.scroll, 0.0, 0.0) {
+                let row_height = row.height() as f64;
+                let current_value = adj.value();
+                let page_size = adj.page_size();
+
+                if y < 0.0 {
+                    adj.set_value(current_value + y);
+                } else if y + row_height > page_size {
+                    adj.set_value(current_value + (y + row_height - page_size));
+                }
+            }
+        }
+
+        widgets.entry.grab_focus_without_selecting();
+    }
+
     fn combined_matches(&self) -> Vec<(&PluginBox, &PluginMatch)> {
         self.plugins
             .iter()
@@ -112,7 +167,7 @@ impl App {
                             None
                         }
                     })
-                    .unwrap(); // Unwrap is safe since we just obtained the selected one
+                    .unwrap();
                 (i, plugin, plugin_match)
             })
     }
@@ -176,30 +231,44 @@ impl Component for App {
                 set_hexpand: true,
                 set_css_classes: &["main"],
 
-                #[name = "entry"]
-                gtk::Text {
-                    set_hexpand: true,
-                    set_activates_default: false,
-                    connect_changed[sender] => move |entry| {
-                        sender.input(AppMsg::EntryChanged(entry.text().into()));
-                    },
+            #[name = "entry"]
+            gtk::Text {
+                set_hexpand: true,
+                set_activates_default: false,
+                set_can_focus: true,
 
-                    add_controller = gtk::EventControllerKey {
-                        connect_key_pressed[sender] => move |_, key, _, modifier| {
-                            sender.input(AppMsg::KeyPressed { key, modifier});
-                            match key {
-                                gdk::Key::Tab => glib::Propagation::Stop,
-                                _ => glib::Propagation::Proceed,
+                connect_changed[sender] => move |entry| {
+                    sender.input(AppMsg::EntryChanged(entry.text().into()));
+                },
+
+                add_controller = gtk::EventControllerKey {
+
+                    connect_key_pressed[sender] => move |_, key, _, modifier| {
+                        // simple_log(&format!("{:?}", key));
+
+                        match key {
+                            gdk::Key::Return |gdk::Key::Up | gdk::Key::Down | gdk::Key::Escape => {
+                                sender.input(AppMsg::KeyPressed { key, modifier });
+                                glib::Propagation::Stop
                             }
+                            _ => glib::Propagation::Proceed,
                         }
                     }
-                },
-                #[local]
-                plugins -> gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_can_focus: false,
-                    set_css_classes: &["matches"],
+                }
+            },
+                #[name = "scroll"]
+                gtk::ScrolledWindow {
+                    set_vexpand: false,
                     set_hexpand: true,
+                    set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
+
+                    #[local]
+                    plugins -> gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_can_focus: false,
+                        set_css_classes: &["matches"],
+                        set_hexpand: true,
+                    }
                 }
             }
         }
@@ -301,6 +370,7 @@ impl Component for App {
             post_run_action: PostRunAction::None,
             tx,
             css_provider,
+            selected_index: 0,
         };
 
         ComponentParts { model, widgets }
@@ -318,15 +388,16 @@ impl Component for App {
                 width: mon_width,
                 height: mon_height,
             } => {
+                let half_height = (mon_height / 2) as i32;
+
+                widgets.scroll.set_min_content_height(half_height);
+                widgets.scroll.set_max_content_height(half_height);
+
                 let width = self.config.width.to_val(mon_width);
                 let x = self.config.x.to_val(mon_width) - width / 2;
                 let height = self.config.height.to_val(mon_height);
                 let y = self.config.y.to_val(mon_height) - height / 2;
 
-                // Layer shell parameters are set up here to make sure when the window
-                // appears it appears at the center of the screen, and is then repositioned.
-                // This is maybe still not optimal, but I don't think there is another way
-                // to do this in a reasonable way.
                 root.set_anchor(Edge::Left, true);
                 root.set_anchor(Edge::Top, true);
 
@@ -365,72 +436,81 @@ impl Component for App {
                     sender.input(AppMsg::Action(*action));
                 }
             }
-            AppMsg::Action(action) => match action {
-                Action::Close => {
-                    if let Some(invocation) = self.invocation.clone() {
-                        invocation.return_value(Some(
-                            &(serde_json::to_vec(&self.post_run_action).unwrap(),).to_variant(),
-                        ));
-                    } else {
-                        match &self.post_run_action {
-                            PostRunAction::Stdout(bytes) => {
-                                io::stdout().lock().write_all(bytes).unwrap()
+            AppMsg::Action(action) => {
+                // simple_log(&format!("--- Triggered Action: {:?} ---", action));
+                match action {
+                    Action::Close => {
+                        if let Some(invocation) = self.invocation.clone() {
+                            invocation.return_value(Some(
+                                &(serde_json::to_vec(&self.post_run_action).unwrap(),).to_variant(),
+                            ));
+                        } else {
+                            match &self.post_run_action {
+                                PostRunAction::Stdout(bytes) => {
+                                    io::stdout().lock().write_all(bytes).unwrap()
+                                }
+                                PostRunAction::None => (),
                             }
-                            PostRunAction::None => (),
+                            root.application().unwrap().quit();
                         }
-                        root.application().unwrap().quit();
+                        // Unload the style so a new one can be loaded on next show
+                        gtk::style_context_remove_provider_for_display(
+                            &WidgetExt::display(root),
+                            &self.css_provider,
+                        );
+                        root.close();
+                        // FIXME: Make sure the worker has actually correctly shut down before
+                        // exiting
+                        let _ = self.tx.blocking_send(ipc::Request::Quit);
+                        relm4::runtime_util::shutdown_all();
                     }
-                    // Unload the style so a new one can be loaded on next show
-                    gtk::style_context_remove_provider_for_display(
-                        &WidgetExt::display(root),
-                        &self.css_provider,
-                    );
-                    root.close();
-                    // FIXME: Make sure the worker has actually correctly shut down before
-                    // exiting
-                    let _ = self.tx.blocking_send(ipc::Request::Quit);
-                    relm4::runtime_util::shutdown_all();
-                }
-                Action::Select => {
-                    if let Some((_, plugin, plugin_match)) = self.current_selection() {
-                        let _ = self.tx.blocking_send(ipc::Request::Handle {
-                            plugin: plugin.plugin_info.clone(),
-                            selection: plugin_match.content.clone(),
-                        });
+                    Action::Select => {
+                        if let Some((_, plugin, plugin_match)) = self.current_selection() {
+                            let _ = self.tx.blocking_send(ipc::Request::Handle {
+                                plugin: plugin.plugin_info.clone(),
+                                selection: plugin_match.content.clone(),
+                            });
+                        }
                     }
-                }
-                Action::Up => {
-                    if let Some((i, plugin, _)) = self.current_selection() {
+
+                    Action::Down => {
                         let matches = self.combined_matches();
-                        plugin
-                            .matches
-                            .widget()
-                            .select_row(Option::<&gtk::ListBoxRow>::None);
-                        if i > 0 {
-                            let (plugin, plugin_match) = matches[i - 1];
-                            plugin.matches.widget().select_row(Some(&plugin_match.row));
-                        } else {
-                            let (plugin, plugin_match) = matches.last().unwrap();
-                            plugin.matches.widget().select_row(Some(&plugin_match.row));
+                        if matches.is_empty() {
+                            return;
                         }
+
+                        self.selected_index = (self.selected_index + 1) % matches.len();
+
+                        self.sync_ui_selection(widgets);
                     }
-                }
-                Action::Down => {
-                    if let Some((i, plugin, _)) = self.current_selection() {
+
+                    Action::Up => {
                         let matches = self.combined_matches();
-                        plugin
-                            .matches
-                            .widget()
-                            .select_row(Option::<&gtk::ListBoxRow>::None);
-                        if let Some((plugin, plugin_match)) = matches.get(i + 1) {
-                            plugin.matches.widget().select_row(Some(&plugin_match.row));
-                        } else {
-                            let (plugin, plugin_match) = matches[0];
-                            plugin.matches.widget().select_row(Some(&plugin_match.row));
+                        if matches.is_empty() {
+                            return;
                         }
+
+                        self.selected_index = if self.selected_index == 0 {
+                            matches.len() - 1
+                        } else {
+                            self.selected_index - 1
+                        };
+
+                        self.sync_ui_selection(widgets);
                     }
                 }
-            },
+            }
+
+            AppMsg::KeyPressed { key, modifier } => {
+                if let Some(kb) = self.config.keybinds.iter().find(|k| {
+                    k.key == key
+                        && k.ctrl == modifier.contains(gdk::ModifierType::CONTROL_MASK)
+                        && k.alt == modifier.contains(gdk::ModifierType::ALT_MASK)
+                        && k.shift == modifier.contains(gdk::ModifierType::SHIFT_MASK)
+                }) {
+                    sender.input(AppMsg::Action(kb.action));
+                }
+            }
             AppMsg::EntryChanged(text) => {
                 let _ = self.tx.blocking_send(ipc::Request::Query { text });
             }
@@ -447,7 +527,6 @@ impl Component for App {
                     self.plugins.broadcast(PluginBoxInput::MaybeHide);
                 }
             }
-            // Handle clicked selections
             AppMsg::PluginOutput(PluginBoxOutput::RowSelected(index)) => {
                 for (i, plugin) in self.plugins.iter().enumerate() {
                     if i != index.current_index() {

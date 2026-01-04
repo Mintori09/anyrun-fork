@@ -1,0 +1,14 @@
+/home/mintori/Projects/Anyrun-Plugins/anyrun-applications/target/release/deps/serde-d77adfbc7cccb231.d: /home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /home/mintori/Projects/Anyrun-Plugins/anyrun-applications/target/release/build/serde-ef74394825afd6be/out/private.rs
+
+/home/mintori/Projects/Anyrun-Plugins/anyrun-applications/target/release/deps/libserde-d77adfbc7cccb231.rlib: /home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /home/mintori/Projects/Anyrun-Plugins/anyrun-applications/target/release/build/serde-ef74394825afd6be/out/private.rs
+
+/home/mintori/Projects/Anyrun-Plugins/anyrun-applications/target/release/deps/libserde-d77adfbc7cccb231.rmeta: /home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /home/mintori/Projects/Anyrun-Plugins/anyrun-applications/target/release/build/serde-ef74394825afd6be/out/private.rs
+
+/home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs:
+/home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs:
+/home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs:
+/home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:
+/home/mintori/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs:
+/home/mintori/Projects/Anyrun-Plugins/anyrun-applications/target/release/build/serde-ef74394825afd6be/out/private.rs:
+
+# env-dep:OUT_DIR=/home/mintori/Projects/Anyrun-Plugins/anyrun-applications/target/release/build/serde-ef74394825afd6be/out
