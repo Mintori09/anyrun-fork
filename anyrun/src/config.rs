@@ -16,6 +16,8 @@ pub struct Config {
     pub width: RelativeNum,
     #[serde(default = "Config::default_height")]
     pub height: RelativeNum,
+    #[serde(default = "Config::default_max_height")]
+    pub max_height: RelativeNum,
 
     #[serde(default = "Config::default_plugins")]
     pub plugins: Vec<PathBuf>,
@@ -60,6 +62,10 @@ impl Config {
 
     fn default_height() -> RelativeNum {
         RelativeNum::Absolute(1)
+    }
+
+    fn default_max_height() -> RelativeNum {
+        RelativeNum::Fraction(0.5)
     }
 
     fn default_plugins() -> Vec<PathBuf> {
@@ -137,6 +143,7 @@ impl Default for Config {
             y: Self::default_y(),
             width: Self::default_width(),
             height: Self::default_height(),
+            max_height: Self::default_max_height(),
             plugins: Self::default_plugins(),
             provider: Self::default_provider(),
             hide_icons: false,

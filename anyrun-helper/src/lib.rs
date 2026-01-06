@@ -1,0 +1,38 @@
+pub mod icon;
+pub mod log;
+pub mod mazzy_matcher;
+
+pub fn focus_to_class(class: &str) {
+    let output = std::process::Command::new("kdotool")
+        .args(["search", "--class", class])
+        .output();
+
+    match output {
+        Ok(out) if out.status.success() => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+
+            if let Some(window_id) = stdout.lines().next().map(|s| s.trim()) {
+                if !window_id.is_empty() {
+                    let activate_res = std::process::Command::new("kdotool")
+                        .args(["windowactivate", window_id])
+                        .spawn();
+
+                    if let Err(e) = activate_res {
+                        eprintln!("Failed to spawn kdotool activate: {}", e);
+                    }
+                }
+            } else {
+                eprintln!("No window found with class: '{}'", class);
+            }
+        }
+        Ok(out) => {
+            eprintln!(
+                "kdotool search failed with exit code: {:?}",
+                out.status.code()
+            );
+        }
+        Err(e) => {
+            eprintln!("Failed to execute kdotool. Is it installed? Error: {}", e);
+        }
+    }
+}

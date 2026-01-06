@@ -1,46 +1,13 @@
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::*;
 use serde::{Deserialize, Serialize};
-use std::fs::{self, OpenOptions};
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::env;
+use std::fs::{self};
+use std::path::Path;
 use std::process::Command;
 use std::sync::OnceLock;
-use std::{env, time::SystemTime};
-
-const LOG_FILE_NAME: &str = "anyrun_findfiles.log";
-const IS_LOGGING_ENABLED: bool = false;
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
-
-struct Logger {
-    path: Option<PathBuf>,
-}
-
-impl Logger {
-    fn new() -> Self {
-        if !IS_LOGGING_ENABLED {
-            return Self { path: None };
-        }
-        let path = env::var("HOME")
-            .ok()
-            .map(|h| Path::new(&h).join("Desktop").join(LOG_FILE_NAME));
-        Self { path }
-    }
-
-    fn log(&self, msg: &str) {
-        let Some(path) = &self.path else { return };
-        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
-            let now = SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-            let _ = writeln!(file, "[{}] {}", now, msg);
-        }
-    }
-}
-
-// --- CONFIGURATION ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SearchScope {
@@ -93,15 +60,11 @@ impl Default for Config {
 
 struct SearchEngine<'a> {
     config: &'a Config,
-    logger: Logger,
 }
 
 impl<'a> SearchEngine<'a> {
     fn new(config: &'a Config) -> Self {
-        Self {
-            config,
-            logger: Logger::new(),
-        }
+        Self { config }
     }
 
     fn build_regex(&self, query: &str) -> String {
@@ -152,15 +115,10 @@ impl<'a> SearchEngine<'a> {
 
         if regex.is_empty() {
             cmd.arg(".").arg(path);
-            self.logger
-                .log(&format!("No query, listing files in: {}", path));
         } else {
             cmd.arg(&regex).arg(path);
-            self.logger.log(&format!("Search: {} in {}", regex, path));
         }
 
-        // We convert the scope_idx (usize) to u64 for the Match ID.
-        // If scope_idx is None (global search), we use u64::MAX
         let match_id = scope_idx.map(|i| i as u64).unwrap_or(u64::MAX);
 
         cmd.output()
@@ -203,9 +161,6 @@ fn init(config_dir: RString) -> Config {
         .ok()
         .and_then(|c| ron::from_str(&c).ok())
         .unwrap_or_default();
-
-    let logger = Logger::new();
-    logger.log(&format!("{:?}", config));
 
     // Store config globally so handler can access custom commands
     let _ = CONFIG.set(config.clone());

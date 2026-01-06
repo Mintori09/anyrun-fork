@@ -1,4 +1,5 @@
 use abi_stable::std_types::{ROption, RString, RVec};
+use anyrun_helper::icon::SystemIcon;
 use anyrun_plugin::*;
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
@@ -90,7 +91,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
                     title: line.trim().into(),
                     description: ROption::RSome(format!("Execute via {}", scope.prefix).into()),
                     id: ROption::RNone,
-                    icon: ROption::RNone,
+                    icon: ROption::RSome(SystemIcon::from_ext(&line).as_str().into()),
                     use_pango: false,
                 })
                 .collect::<Vec<_>>()
@@ -156,8 +157,11 @@ fn handler(selection: Match, state: &State) -> HandleResult {
     }
     HandleResult::Close
 }
+
 #[cfg(test)]
 mod tests {
+    use abi_stable::std_types::ROption::RNone;
+
     use super::*;
     use std::{env, fs, path::PathBuf};
 
@@ -186,5 +190,31 @@ mod tests {
             }
             Err(e) => panic!("File RON tồn tại nhưng sai cấu trúc: {}", e),
         }
+    }
+
+    #[test]
+    fn read_brotab() {
+        let results = get_list_output("sh /home/mintori/Desktop/test.sh");
+
+        println!("--- Raw Results ---");
+        results.iter().for_each(|result| {
+            println!("{}", result);
+        });
+
+        println!("\n--- Matches ---");
+        let matches: Vec<Match> = results
+            .into_iter()
+            .map(|result| Match {
+                title: result.into(),
+                description: RNone,
+                id: RNone,
+                use_pango: false,
+                icon: RNone,
+            })
+            .collect();
+
+        matches.iter().for_each(|m| {
+            println!("{:?}", m);
+        });
     }
 }

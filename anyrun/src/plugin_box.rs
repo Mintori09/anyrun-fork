@@ -6,7 +6,7 @@ use gtk::{pango, prelude::*};
 use gtk4 as gtk;
 use relm4::prelude::*;
 
-use crate::Config;
+use crate::config::Config;
 
 pub struct PluginMatch {
     pub content: Match,
@@ -25,25 +25,20 @@ impl FactoryComponent for PluginMatch {
         gtk::ListBoxRow {
             set_css_classes: &["match"],
             set_height_request: 32,
-            set_focusable: false,
-            set_can_focus: false,
-            set_can_target: true,
-            set_activatable: false,
-
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 10,
                 set_css_classes: &["match"],
                 set_hexpand: true,
 
-                #[name = "icon"]
+                #[name = "_icon"]
                 gtk::Image {
                     set_pixel_size: 32,
                     set_visible: false,
                     set_css_classes: &["match"]
                 },
 
-                #[name = "text"]
+                #[name = "_text"]
                 gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
                     set_css_classes: &["match", "text-fields"],
@@ -63,7 +58,7 @@ impl FactoryComponent for PluginMatch {
                         set_label: &self.content.title,
                     },
 
-                    #[name = "description"]
+                    #[name = "_description"]
                     gtk::Label {
                         set_css_classes: &["match", "description"],
                         set_wrap: true,
@@ -90,19 +85,19 @@ impl FactoryComponent for PluginMatch {
 
         if !self.config.hide_icons {
             if let ROption::RSome(icon) = &self.content.icon {
-                widgets.icon.set_visible(true);
+                widgets._icon.set_visible(true);
                 let path = PathBuf::from(icon.to_string());
                 if path.is_absolute() {
-                    widgets.icon.set_from_file(Some(path));
+                    widgets._icon.set_from_file(Some(path));
                 } else {
-                    widgets.icon.set_icon_name(Some(icon));
+                    widgets._icon.set_icon_name(Some(icon));
                 }
             }
         }
 
         match &self.content.description {
-            ROption::RSome(desc) => widgets.description.set_label(desc),
-            ROption::RNone => widgets.description.set_visible(false),
+            ROption::RSome(desc) => widgets._description.set_label(desc),
+            ROption::RNone => widgets._description.set_visible(false),
         }
 
         widgets

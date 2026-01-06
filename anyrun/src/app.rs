@@ -5,14 +5,13 @@ use crate::{
 };
 use anyrun_interface::HandleResult;
 use anyrun_provider_ipc as ipc;
-use chrono::Local;
 use gtk::{gdk, gio, glib, prelude::*};
 use gtk4 as gtk;
 use gtk4_layer_shell::{Edge, LayerShell};
 use relm4::{prelude::*, ComponentBuilder, Sender};
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::path::PathBuf;
-use std::{env, fs::OpenOptions};
 use std::{
     fs,
     io::{self, Write},
@@ -28,10 +27,10 @@ const DEFAULT_CSS: &str = include_str!("../res/style.css");
 //         path.push("Desktop");
 //         path.push("log.txt");
 //
-//         let file = OpenOptions::new().create(true).append(true).open(path);
+//         let file = std::fs::OpenOptions::new().create(true).append(true).open(path);
 //
 //         if let Ok(mut file) = file {
-//             let now = Local::now().format("%Y-%m-%d %H:%M:%S");
+//             let now = std::chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
 //
 //             let log_entry = format!("[{}] {}\n", now, message);
 //             let _ = file.write_all(log_entry.as_bytes());
@@ -95,8 +94,8 @@ impl App {
         controller.detach_runtime();
         controller.sender().clone()
     }
-    fn sync_ui_selection(&self, widgets: &mut AppWidgets) {
-        let matches = self.combined_matches();
+
+    fn sync_ui_selection(&self, widgets: &mut AppWidgets, matches: &[(&PluginBox, &PluginMatch)]) {
         if matches.is_empty() {
             return;
         }
@@ -105,19 +104,20 @@ impl App {
             plugin
                 .matches
                 .widget()
-                .select_row(Option::<&gtk::ListBoxRow>::None);
+                .select_row(Option::<&gtk4::ListBoxRow>::None);
         }
 
         if let Some((plugin, plugin_match)) = matches.get(self.selected_index) {
             let listbox = plugin.matches.widget();
             let row = &plugin_match.row;
-
             listbox.select_row(Some(row));
 
-            let adj = widgets.scroll.vadjustment();
+            let adj = widgets._scroll.vadjustment();
 
-            if let Some((_, y)) = row.translate_coordinates(&widgets.scroll, 0.0, 0.0) {
-                let row_height = row.height() as f64;
+            if let Some(bounds) = row.compute_bounds(&widgets._scroll) {
+                let y = bounds.y() as f64;
+                let row_height = bounds.height() as f64;
+
                 let current_value = adj.value();
                 let page_size = adj.page_size();
 
@@ -128,49 +128,27 @@ impl App {
                 }
             }
         }
-
-        widgets.entry.grab_focus_without_selecting();
+        widgets._entry.grab_focus_without_selecting();
     }
 
     fn combined_matches(&self) -> Vec<(&PluginBox, &PluginMatch)> {
-        self.plugins
-            .iter()
-            .flat_map(|plugin| {
-                plugin
-                    .matches
-                    .iter()
-                    .map(|plugin_match| (plugin, plugin_match))
-                    .collect::<Vec<_>>()
-            })
-            .collect()
+        let total_matches: usize = self.plugins.iter().map(|p| p.matches.len()).sum();
+        let mut matches = Vec::with_capacity(total_matches);
+
+        for plugin in self.plugins.iter() {
+            for plugin_match in plugin.matches.iter() {
+                matches.push((plugin, plugin_match));
+            }
+        }
+        matches
     }
 
-    fn current_selection(&self) -> Option<(usize, &PluginBox, &PluginMatch)> {
-        self.plugins
-            .iter()
-            .find_map(|plugin| {
-                plugin
-                    .matches
-                    .widget()
-                    .selected_row()
-                    .map(|row| (plugin, row))
-            })
-            .map(|(plugin, row)| {
-                let (i, plugin_match) = self
-                    .combined_matches()
-                    .iter()
-                    .enumerate()
-                    .find_map(|(i, (_, plugin_match))| {
-                        if plugin_match.row == row {
-                            Some((i, *plugin_match))
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap();
-                (i, plugin, plugin_match)
-            })
-    }
+    // fn current_selection(&self) -> Option<(usize, &PluginBox, &PluginMatch)> {
+    //     let matches = self.combined_matches();
+    //     matches
+    //         .get(self.selected_index)
+    //         .map(|(p, m)| (self.selected_index, *p, *m))
+    // }
 }
 
 #[relm4::component(pub)]
@@ -223,7 +201,7 @@ impl Component for App {
                 }
             },
 
-            #[name = "main"]
+            #[name = "_main"]
             gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
                 set_halign: gtk::Align::Center,
@@ -231,7 +209,7 @@ impl Component for App {
                 set_hexpand: true,
                 set_css_classes: &["main"],
 
-                #[name = "entry"]
+                #[name = "_entry"]
                   gtk::Text {
                   set_hexpand: true,
                   set_activates_default: false,
@@ -249,9 +227,9 @@ impl Component for App {
                         }
                     }
                 },
-                #[name = "scroll"]
+                #[name = "_scroll"]
                 gtk::ScrolledWindow {
-                    set_vexpand: false,
+                    set_vexpand: true,
                     set_hexpand: true,
                     set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
 
@@ -276,7 +254,6 @@ impl Component for App {
             .map(|c| format!("{c}/anyrun"))
             .or_else(|_| env::var("HOME").map(|h| format!("{h}/.config/anyrun")))
             .unwrap();
-
         let config_dir = app_init
             .args
             .config_dir
@@ -381,10 +358,11 @@ impl Component for App {
                 width: mon_width,
                 height: mon_height,
             } => {
-                let half_height = (mon_height / 2) as i32;
+                // let half_height = (mon_height / 2) as i32;
 
-                widgets.scroll.set_min_content_height(half_height);
-                widgets.scroll.set_max_content_height(half_height);
+                let max_height = self.config.max_height.to_val(mon_height);
+                widgets._scroll.set_min_content_height(max_height);
+                widgets._scroll.set_max_content_height(max_height);
 
                 let width = self.config.width.to_val(mon_width);
                 let x = self.config.x.to_val(mon_width) - width / 2;
@@ -396,12 +374,12 @@ impl Component for App {
 
                 if self.config.close_on_click {
                     root.set_default_size(mon_width as i32, mon_height as i32);
-                    widgets.main.set_halign(gtk::Align::Fill);
-                    widgets.main.set_margin_start(x);
-                    widgets.main.set_margin_top(y);
-                    widgets.main.set_margin_end(mon_width as i32 - x - width);
+                    widgets._main.set_halign(gtk::Align::Fill);
+                    widgets._main.set_margin_start(x);
+                    widgets._main.set_margin_top(y);
+                    widgets._main.set_margin_end(mon_width as i32 - x - width);
                     widgets
-                        .main
+                        ._main
                         .set_margin_bottom(mon_height as i32 - y - height);
                 } else {
                     root.set_default_size(width, height);
@@ -410,7 +388,7 @@ impl Component for App {
                     root.set_margin(Edge::Top, y);
                 }
                 root.set_opacity(1.0); // Continuation of the Sway hack
-                widgets.entry.grab_focus_without_selecting();
+                widgets._entry.grab_focus_without_selecting();
 
                 // If show_results_immediately is enabled, trigger initial search with empty input
                 if self.config.show_results_immediately {
@@ -457,55 +435,57 @@ impl Component for App {
                         let _ = self.tx.blocking_send(ipc::Request::Quit);
                         relm4::runtime_util::shutdown_all();
                     }
+                    Action::Down | Action::Up => {
+                        let len = self.combined_matches().len();
+                        if len == 0 {
+                            return;
+                        }
+
+                        if matches!(action, Action::Down) {
+                            self.selected_index = (self.selected_index + 1) % len;
+                        } else {
+                            self.selected_index = if self.selected_index == 0 {
+                                len - 1
+                            } else {
+                                self.selected_index - 1
+                            };
+                        }
+
+                        let matches = self.combined_matches();
+                        self.sync_ui_selection(widgets, &matches);
+                    }
                     Action::Select => {
-                        if let Some((_, plugin, plugin_match)) = self.current_selection() {
+                        let matches = self.combined_matches();
+                        if let Some((plugin, plugin_match)) = matches.get(self.selected_index) {
+                            let info = plugin.plugin_info.clone();
+                            let content = plugin_match.content.clone();
+
+                            drop(matches);
+
                             let _ = self.tx.blocking_send(ipc::Request::Handle {
-                                plugin: plugin.plugin_info.clone(),
-                                selection: plugin_match.content.clone(),
+                                plugin: info,
+                                selection: content,
                             });
                         }
                     }
-
-                    Action::Down => {
-                        let matches = self.combined_matches();
-                        if matches.is_empty() {
-                            return;
-                        }
-
-                        self.selected_index = (self.selected_index + 1) % matches.len();
-
-                        self.sync_ui_selection(widgets);
-                    }
-
-                    Action::Up => {
-                        let matches = self.combined_matches();
-                        if matches.is_empty() {
-                            return;
-                        }
-
-                        self.selected_index = if self.selected_index == 0 {
-                            matches.len() - 1
-                        } else {
-                            self.selected_index - 1
-                        };
-
-                        self.sync_ui_selection(widgets);
-                    }
                 }
             }
 
-            AppMsg::KeyPressed { key, modifier } => {
-                if let Some(kb) = self.config.keybinds.iter().find(|k| {
-                    k.key == key
-                        && k.ctrl == modifier.contains(gdk::ModifierType::CONTROL_MASK)
-                        && k.alt == modifier.contains(gdk::ModifierType::ALT_MASK)
-                        && k.shift == modifier.contains(gdk::ModifierType::SHIFT_MASK)
-                }) {
-                    sender.input(AppMsg::Action(kb.action));
-                }
-            }
+            // AppMsg::KeyPressed { key, modifier } => {
+            //     if let Some(kb) = self.config.keybinds.iter().find(|k| {
+            //         k.key == key
+            //             && k.ctrl == modifier.contains(gdk::ModifierType::CONTROL_MASK)
+            //             && k.alt == modifier.contains(gdk::ModifierType::ALT_MASK)
+            //             && k.shift == modifier.contains(gdk::ModifierType::SHIFT_MASK)
+            //     }) {
+            //         sender.input(AppMsg::Action(kb.action));
+            //     }
+            // }
             AppMsg::EntryChanged(text) => {
-                let _ = self.tx.blocking_send(ipc::Request::Query { text });
+                let tx = self.tx.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(50), move || {
+                    let _ = tx.blocking_send(ipc::Request::Query { text });
+                });
             }
             AppMsg::PluginOutput(PluginBoxOutput::MatchesLoaded) => {
                 let matches = self.combined_matches();
@@ -569,7 +549,7 @@ impl Component for App {
                     HandleResult::Close => sender.input(AppMsg::Action(Action::Close)),
                     HandleResult::Refresh(exclusive) => {
                         let _ = self.tx.blocking_send(ipc::Request::Query {
-                            text: widgets.entry.text().into(),
+                            text: widgets._entry.text().into(),
                         });
                         if exclusive {
                             for (i, plugin_box) in self.plugins.iter().enumerate() {
