@@ -169,6 +169,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyrun-browser"
+version = "0.1.0"
+dependencies = [
+ "abi_stable",
+ "anyrun-helper",
+ "anyrun-plugin",
+ "chrono",
+ "fuzzy-matcher",
+ "ron 0.12.0",
+ "serde",
+ "urlencoding",
+]
+
+[[package]]
 name = "anyrun-calc"
 version = "0.1.0"
 dependencies = [
@@ -191,6 +205,14 @@ dependencies = [
  "serde_json",
  "skim",
  "walkdir",
+]
+
+[[package]]
+name = "anyrun-helper"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "fuzzy-matcher",
 ]
 
 [[package]]
@@ -246,6 +268,7 @@ name = "anyrun-shell-wrapper"
 version = "0.1.0"
 dependencies = [
  "abi_stable",
+ "anyrun-helper",
  "anyrun-plugin",
  "chrono",
  "fuzzy-matcher",
@@ -3016,16 +3039,6 @@ dependencies = [
  "form_urlencoded",
  "itoa",
  "ryu",
- "serde",
-]
-
-[[package]]
-name = "shell"
-version = "25.12.0"
-dependencies = [
- "abi_stable",
- "anyrun-plugin",
- "ron 0.8.1",
  "serde",
 ]
 

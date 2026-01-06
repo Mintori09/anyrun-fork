@@ -5,23 +5,17 @@ use std::{
 };
 
 use clap::{Parser, Subcommand};
-use gtk::{glib, prelude::*};
-use gtk4::{
-    self as gtk,
-    gio::{self},
-};
+use gtk4::{self as gtk, gio, glib, prelude::*};
 use relm4::Sender;
 use serde::{Deserialize, Serialize};
-
-use crate::config::{Config, ConfigArgs};
 
 mod app;
 mod config;
 mod plugin_box;
 mod provider;
 
-/// The interface through which the daemon
-/// responds to launch requests
+use crate::config::ConfigArgs;
+
 const INTERFACE_XML: &str = r#"
 <node>
     <interface name="org.anyrun.Anyrun">
@@ -32,7 +26,7 @@ const INTERFACE_XML: &str = r#"
         <method name="Close"></method>
         <method name="Quit"></method>
     </interface>
-</node> 
+</node>
 "#;
 
 #[derive(Debug, glib::Variant)]
@@ -54,30 +48,27 @@ impl DBusMethodCall for InterfaceMethod {
         params: glib::Variant,
     ) -> Result<Self, glib::Error> {
         match method {
-            "Show" => Ok(params.get::<Show>().map(Self::Show)),
-            "Close" => Ok(Some(Self::Close)),
-            "Quit" => Ok(Some(Self::Quit)),
+            "Show" => params
+                .get::<Show>()
+                .map(Self::Show)
+                .ok_or_else(|| glib::Error::new(gio::DBusError::InvalidArgs, "Invalid args")),
+            "Close" => Ok(Self::Close),
+            "Quit" => Ok(Self::Quit),
             _ => Err(glib::Error::new(
                 gio::DBusError::UnknownMethod,
                 "No such method",
             )),
         }
-        .and_then(|p| {
-            p.ok_or_else(|| glib::Error::new(gio::DBusError::InvalidArgs, "Invalid parameters"))
-        })
     }
 }
 
-/// A wayland native, highly customizable runner.
 #[derive(Parser, Clone, Debug, Serialize, Deserialize)]
 #[command(version, about)]
 pub struct Args {
-    /// Override the path to the config directory
     #[arg(short, long)]
     config_dir: Option<String>,
     #[command(flatten)]
     config: ConfigArgs,
-
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -89,165 +80,158 @@ enum Command {
     Quit,
 }
 
-/// Refcelled state for the daemon DBus listener
 struct DaemonState {
     sender: Option<Sender<app::AppMsg>>,
 }
 
 fn main() {
     let args = Args::parse();
-    let flags = if matches!(args.command, Some(Command::Daemon)) {
-        gio::ApplicationFlags::IS_SERVICE
-    } else {
-        Default::default()
-    };
-    let app = gtk::Application::new(Some("org.anyrun.anyrun"), flags);
-    app.register(Option::<&gio::Cancellable>::None).unwrap();
 
-    let dbus_conn = app.dbus_connection().unwrap();
+    if let Some(cmd) = args.command {
+        match cmd {
+            Command::Close | Command::Quit => {
+                let method = if matches!(cmd, Command::Close) {
+                    "Close"
+                } else {
+                    "Quit"
+                };
+                fast_ipc_call(method);
+                return;
+            }
+            Command::Daemon => {
+                run_daemon(args);
+                return;
+            }
+        }
+    }
 
-    let interface = gio::DBusNodeInfo::for_xml(INTERFACE_XML)
-        .unwrap()
-        .lookup_interface("org.anyrun.Anyrun")
-        .unwrap();
+    run_client(args);
+}
 
-    let proxy = gio::DBusProxy::new_sync(
-        &dbus_conn,
-        gio::DBusProxyFlags::empty(),
-        Some(&interface),
+fn fast_ipc_call(method: &str) {
+    let conn = gio::bus_get_sync(gio::BusType::Session, Option::<&gio::Cancellable>::None)
+        .expect("Failed to connect to DBus session bus");
+
+    let _ = conn.call_sync(
         Some("org.anyrun.anyrun"),
         "/org/anyrun/anyrun",
         "org.anyrun.Anyrun",
+        method,
+        None,
+        None,
+        gio::DBusCallFlags::NONE,
+        500,
         Option::<&gio::Cancellable>::None,
-    )
-    .unwrap();
+    );
+}
 
-    match args.command {
-        None => {
-            let stdin = if io::stdin().is_terminal() {
-                Vec::new()
-            } else {
-                let mut buf = Vec::new();
-                io::stdin().read_to_end(&mut buf).unwrap();
-                buf
-            };
-            let env = std::env::vars().collect();
+fn run_client(args: Args) {
+    let app = gtk::Application::new(Some("org.anyrun.anyrun"), Default::default());
+    app.register(Option::<&gio::Cancellable>::None).unwrap();
 
-            if app.is_remote() {
-                let res = proxy
-                    .call_sync(
-                        "Show",
-                        Some(
-                            &(serde_json::to_vec(&app::AppInit { args, stdin, env }).unwrap(),)
-                                .to_variant(),
-                        ),
-                        gio::DBusCallFlags::NONE,
-                        1_000_000_000, // Very long timeout to get results from the daemon
-                        Option::<&gio::Cancellable>::None,
-                    )
-                    .unwrap();
-
-                let (bytes,): (Vec<u8>,) = FromVariant::from_variant(&res).unwrap();
-
-                match serde_json::from_slice::<app::PostRunAction>(&bytes).unwrap() {
-                    app::PostRunAction::Stdout(stdout) => {
-                        io::stdout().lock().write_all(&stdout).unwrap()
-                    }
-                    app::PostRunAction::None => (),
-                }
-            } else {
-                eprintln!("\x1B[1;33m[anyrun] Warning: started in standalone mode, clipboard functionality will be unavailable and startup speed is reduced. \
-                    Consider starting the daemon alongside your compositor by making sure `anyrun daemon` is ran somewhere.\x1B[0m");
-
-                app.connect_activate(move |app| {
-                    app::App::launch(
-                        app,
-                        app::AppInit {
-                            args: args.clone(),
-                            stdin: stdin.clone(),
-                            env: env.clone(),
-                        },
-                        None,
-                    );
-                });
-            }
-            app.run_with_args(&Vec::<String>::new());
+    if app.is_remote() {
+        let mut stdin = Vec::new();
+        if !io::stdin().is_terminal() {
+            let _ = io::stdin().read_to_end(&mut stdin);
         }
-        Some(Command::Close) => {
-            if !app.is_remote() {
-                eprintln!("[anyrun] Can't close the launcher if no daemon exists");
-                std::process::exit(1);
-            }
 
-            proxy
-                .call_sync(
-                    "Close",
-                    None,
-                    gio::DBusCallFlags::NONE,
-                    100,
-                    Option::<&gio::Cancellable>::None,
-                )
-                .unwrap();
-            app.run_with_args(&Vec::<String>::new());
+        let env: Vec<(String, String)> = std::env::vars().collect();
+
+        let conn = app.dbus_connection().unwrap();
+        let init_payload = app::AppInit { args, stdin, env };
+        let serialized_data = serde_json::to_vec(&init_payload).unwrap();
+
+        let msg = (serialized_data,).to_variant();
+
+        let res = conn
+            .call_sync(
+                Some("org.anyrun.anyrun"),
+                "/org/anyrun/anyrun",
+                "org.anyrun.Anyrun",
+                "Show",
+                Some(&msg),
+                None,
+                gio::DBusCallFlags::NONE,
+                -1,
+                Option::<&gio::Cancellable>::None,
+            )
+            .expect("Daemon call failed");
+
+        let Some(bytes) = res.child_value(0).get::<Vec<u8>>() else {
+            return;
+        };
+
+        let Ok(app::PostRunAction::Stdout(stdout)) =
+            serde_json::from_slice::<app::PostRunAction>(&bytes)
+        else {
+            return;
+        };
+
+        let _ = io::stdout().lock().write_all(&stdout);
+    } else {
+        let mut stdin = Vec::new();
+        if !io::stdin().is_terminal() {
+            let _ = io::stdin().read_to_end(&mut stdin);
         }
-        Some(Command::Quit) => {
-            if !app.is_remote() {
-                eprintln!("[anyrun] Can't quit the daemon if it isn't running.");
-                std::process::exit(1);
-            }
+        let env: Vec<(String, String)> = std::env::vars().collect();
 
-            proxy
-                .call_sync(
-                    "Quit",
-                    None,
-                    gio::DBusCallFlags::NONE,
-                    100,
-                    Option::<&gio::Cancellable>::None,
-                )
-                .unwrap();
-            app.run_with_args(&Vec::<String>::new());
-        }
-        Some(Command::Daemon) => {
-            let _hold_guard = app.hold();
-
-            let state = Rc::new(RefCell::new(DaemonState { sender: None }));
-
-            dbus_conn
-                .register_object("/org/anyrun/anyrun", &interface)
-                .typed_method_call::<InterfaceMethod>()
-                .invoke(glib::clone!(
-                    #[weak_allow_none]
-                    app,
-                    #[strong]
-                    state,
-                    move |_conn, _sender, method, invocation| {
-                        let app = app.unwrap();
-                        match method {
-                            InterfaceMethod::Show(show) => {
-                                state.borrow_mut().sender = Some(app::App::launch(
-                                    &app,
-                                    serde_json::from_slice(&show.args).unwrap(),
-                                    Some(invocation),
-                                ));
-                            }
-                            InterfaceMethod::Close => {
-                                if let Some(sender) = &state.borrow().sender {
-                                    sender.emit(app::AppMsg::Action(config::Action::Close));
-                                }
-                                state.borrow_mut().sender = None;
-                                invocation.return_value(None);
-                            }
-                            InterfaceMethod::Quit => {
-                                invocation.return_value(None);
-                                app.quit();
-                            }
-                        }
-                    }
-                ))
-                .build()
-                .unwrap();
-
-            app.run_with_args(&Vec::<String>::new());
-        }
+        app.connect_activate(move |app| {
+            app::App::launch(
+                app,
+                app::AppInit {
+                    args: args.clone(),
+                    stdin: stdin.clone(),
+                    env: env.clone(),
+                },
+                None,
+            );
+        });
+        app.run_with_args(&Vec::<String>::new());
     }
+}
+
+fn run_daemon(_args: Args) {
+    let app = gtk::Application::new(Some("org.anyrun.anyrun"), gio::ApplicationFlags::IS_SERVICE);
+    app.register(Option::<&gio::Cancellable>::None).unwrap();
+
+    let _hold = app.hold();
+    let state = Rc::new(RefCell::new(DaemonState { sender: None }));
+    let dbus_conn = app.dbus_connection().unwrap();
+
+    let node_info = gio::DBusNodeInfo::for_xml(INTERFACE_XML).unwrap();
+    let interface = node_info.lookup_interface("org.anyrun.Anyrun").unwrap();
+
+    dbus_conn
+        .register_object("/org/anyrun/anyrun", &interface)
+        .typed_method_call::<InterfaceMethod>()
+        .invoke(glib::clone!(
+            #[weak]
+            app,
+            #[strong]
+            state,
+            move |_conn, _sender, method, invocation| {
+                match method {
+                    InterfaceMethod::Show(show) => {
+                        let init_data = serde_json::from_slice(&show.args).unwrap();
+                        state.borrow_mut().sender =
+                            Some(app::App::launch(&app, init_data, Some(invocation)));
+                    }
+                    InterfaceMethod::Close => {
+                        if let Some(s) = &state.borrow().sender {
+                            s.emit(app::AppMsg::Action(config::Action::Close));
+                        }
+                        state.borrow_mut().sender = None;
+                        invocation.return_value(None);
+                    }
+                    InterfaceMethod::Quit => {
+                        invocation.return_value(None);
+                        app.quit();
+                    }
+                }
+            }
+        ))
+        .build()
+        .unwrap();
+
+    app.run_with_args(&Vec::<String>::new());
 }
