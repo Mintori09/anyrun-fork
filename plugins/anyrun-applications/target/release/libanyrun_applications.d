@@ -1,1 +1,0 @@
-/home/mintori/Projects/Anyrun-Plugins/anyrun-applications/target/release/libanyrun_applications.so: /home/mintori/Projects/Anyrun-Plugins/anyrun-applications/src/lib.rs /home/mintori/Projects/Anyrun-Plugins/anyrun-applications/src/scrubber.rs
