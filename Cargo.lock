@@ -321,6 +321,7 @@ name = "anyrun-websearch"
 version = "0.1.0"
 dependencies = [
  "abi_stable",
+ "anyrun-helper",
  "anyrun-plugin",
  "ron 0.8.1",
  "serde",
@@ -4447,19 +4448,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2878ef029c47c6e8cf779119f20fcf52bde7ad42a731b2a304bc221df17571e"
 dependencies = [
  "rustls-pki-types",
-]
-
-[[package]]
-name = "websearch"
-version = "25.12.0"
-dependencies = [
- "abi_stable",
- "anyrun-plugin",
- "ron 0.8.1",
- "serde",
- "strum",
- "strum_macros",
- "urlencoding",
 ]
 
 [[package]]

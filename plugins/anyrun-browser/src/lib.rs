@@ -1,6 +1,6 @@
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_helper::focus_to_class;
-use anyrun_helper::icon::SystemIcon;
+use anyrun_helper::icon::{SystemIcon, get_icon_path};
 use anyrun_plugin::*;
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
@@ -55,73 +55,6 @@ fn info() -> PluginInfo {
         name: "Browser Tabs".into(),
         icon: SystemIcon::WebBrowser.as_str().into(),
     }
-}
-
-fn home_dir() -> Option<PathBuf> {
-    #[cfg(target_family = "windows")]
-    {
-        if let Some(v) = env::var_os("USERPROFILE") {
-            return Some(PathBuf::from(v));
-        }
-        let drive = env::var_os("HOMEDRIVE");
-        let path = env::var_os("HOMEPATH");
-        if let (Some(d), Some(p)) = (drive, path) {
-            return Some(PathBuf::from(PathBuf::from(d).join(p)));
-        }
-    }
-
-    #[cfg(target_family = "unix")]
-    {
-        if let Some(home) = env::var_os("HOME") {
-            return Some(PathBuf::from(home));
-        }
-    }
-
-    None
-}
-fn get_icon_path(url_str: &str) -> String {
-    // Trích xuất domain sạch (ví dụ: laravel.com)
-    let domain = url_str
-        .replace("https://", "")
-        .replace("http://", "")
-        .split('/')
-        .next()
-        .unwrap_or("default")
-        .to_string();
-
-    let cache_dir = format!(
-        "{}/.config/anyrun/anyrun-favicons",
-        home_dir().unwrap().to_string_lossy()
-    );
-    let icon_path = format!("{}/{}.png", cache_dir, domain);
-
-    if std::path::Path::new(&icon_path).exists() {
-        return icon_path;
-    }
-
-    // Tạo thư mục và tải ngầm
-    let _ = std::fs::create_dir_all(cache_dir);
-    let dest = icon_path.clone();
-
-    // Sử dụng URL gstatic mới
-    let download_url = format!(
-        "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://{}&size=64",
-        domain
-    );
-
-    std::thread::spawn(move || {
-        // Flag -L để xử lý 301/302 redirect
-        let _ = std::process::Command::new("curl")
-            .arg("-L")
-            .arg("-s")
-            .arg("-o")
-            .arg(dest)
-            .arg(download_url)
-            .output();
-    });
-
-    // Trả về icon mặc định của hệ thống trong khi chờ tải
-    "web-browser".to_string()
 }
 
 #[get_matches]
@@ -231,6 +164,7 @@ fn handler(selection: Match, state: &State) -> HandleResult {
         } else {
             state.config.source.clone()
         };
+
         focus_to_class("firefox");
 
         let _ = Command::new(full_path)

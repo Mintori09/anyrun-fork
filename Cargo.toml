@@ -10,7 +10,6 @@ members = [
     "plugins/randr",
     "plugins/stdin",
     "plugins/dictionary",
-    "plugins/websearch",
     "plugins/nix-run",
     "plugins/niri-focus",
     "plugins/anyrun-applications",

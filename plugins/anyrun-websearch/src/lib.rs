@@ -1,4 +1,5 @@
 use abi_stable::std_types::{ROption, RString, RVec};
+use anyrun_helper::{focus_to_class, icon::get_icon_path};
 use anyrun_plugin::*;
 use serde::Deserialize;
 use std::{fs, process::Command};
@@ -7,7 +8,7 @@ use std::{fs, process::Command};
 struct SearchEngine {
     name: String,
     prefix: String,
-    url: String, // Ví dụ: "https://google.com/search?q={}"
+    url: String,
 }
 
 #[derive(Deserialize)]
@@ -64,7 +65,7 @@ fn get_matches(input: RString, config: &Config) -> RVec<Match> {
                     title: format!("Search {} for: {}", engine.name, query).into(),
                     description: ROption::RSome(full_url.into()),
                     use_pango: false,
-                    icon: ROption::RNone,
+                    icon: ROption::RSome(get_icon_path(&engine.url).into()),
                     id: ROption::RNone,
                 });
             }
@@ -81,6 +82,8 @@ fn handler(selection: Match) -> HandleResult {
     if let Err(why) = Command::new("xdg-open").arg(url.as_str()).spawn() {
         eprintln!("[browser-search] Failed to open browser: {}", why);
     }
+
+    focus_to_class("firefox");
 
     HandleResult::Close
 }
