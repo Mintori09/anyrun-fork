@@ -1,4 +1,5 @@
 use abi_stable::std_types::{ROption, RString, RVec};
+use anyrun_helper::icon::SystemIcon;
 use anyrun_plugin::*;
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
@@ -77,7 +78,7 @@ fn get_matches(input: RString, config: &Config) -> RVec<Match> {
             title: path.into(),
             description: ROption::RSome("Zoxide directory".into()),
             use_pango: false,
-            icon: ROption::RNone,
+            icon: ROption::RSome(SystemIcon::Folder.as_str().into()),
             id: ROption::RNone,
         })
         .collect::<Vec<_>>()
