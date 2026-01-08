@@ -1,9 +1,8 @@
 use serde::Deserialize;
-use std::borrow::Cow;
+use std::{borrow::Cow, path::PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
 pub enum SystemIcon {
-    // --- NHÓM HỆ THỐNG & CÀI ĐẶT ---
     Settings,
     UserPassword,
     NetworkStatus,
@@ -12,13 +11,11 @@ pub enum SystemIcon {
     Display,
     Sound,
 
-    // --- NHÓM ĐIỀU HƯỚNG ---
     GoHome,
     GoBack,
     GoNext,
     Menu,
 
-    // --- NHÓM HÀNH ĐỘNG (Actions) ---
     DocumentSave,
     EditCopy,
     EditPaste,
@@ -30,7 +27,6 @@ pub enum SystemIcon {
     ZoomOut,
     MailSend,
 
-    // --- NHÓM PLUGIN ĐẶC THÙ (Anyrun specific) ---
     Calculator,
     WebBrowser,
     Dictionary,
@@ -41,7 +37,6 @@ pub enum SystemIcon {
     Monitor,
     Url,
 
-    // --- NHÓM FILE TYPE & MIME ---
     #[default]
     FileText,
     FileImage,
@@ -54,9 +49,8 @@ pub enum SystemIcon {
     FileWord,
     FilePowerpoint,
     Folder,
-    FolderRemote, // Thư mục mạng/cloud
+    FolderRemote,
 
-    // --- NHÓM NGÔN NGỮ LẬP TRÌNH CHI TIẾT ---
     Rust,
     JavaScript,
     TypeScript,
@@ -77,14 +71,12 @@ pub enum SystemIcon {
     Rclone,
     Config,
     Firefox,
-    // --- TÙY CHỈNH ---
     Custom(Cow<'static, str>),
 }
 
 impl SystemIcon {
     pub fn as_str(&self) -> &str {
         match self {
-            // Hệ thống
             Self::Settings => "preferences-system",
             Self::UserPassword => "preferences-desktop-user-password",
             Self::NetworkStatus => "network-workgroup",
@@ -93,13 +85,11 @@ impl SystemIcon {
             Self::Display => "video-display",
             Self::Sound => "audio-speakers",
 
-            // Điều hướng
             Self::GoHome => "go-home",
             Self::GoBack => "go-previous",
             Self::GoNext => "go-next",
             Self::Menu => "open-menu",
 
-            // Hành động
             Self::DocumentSave => "document-save",
             Self::EditCopy => "edit-copy",
             Self::EditPaste => "edit-paste",
@@ -111,7 +101,6 @@ impl SystemIcon {
             Self::ZoomOut => "zoom-out",
             Self::MailSend => "mail-send",
 
-            // Plugin
             Self::Calculator => "accessories-calculator",
             Self::WebBrowser => "internet-web-browser",
             Self::Dictionary => "accessories-dictionary",
@@ -121,7 +110,6 @@ impl SystemIcon {
             Self::Language => "preferences-desktop-locale",
             Self::Monitor => "preferences-desktop-display",
 
-            // File Types
             Self::FileText => "text-x-generic",
             Self::FileImage => "image-x-generic",
             Self::FileVideo => "video-x-generic",
@@ -157,7 +145,6 @@ impl SystemIcon {
             Self::Config => "system-config-display",
             Self::Firefox => "firefox",
 
-            // Custom
             _ => "text-x-generic",
         }
     }
@@ -168,7 +155,6 @@ impl SystemIcon {
 
     pub fn from_ext(ext: &str) -> Self {
         match ext.to_lowercase().as_str() {
-            // Code
             "rs" => Self::Rust,
             "js" => Self::JavaScript,
             "ts" => Self::TypeScript,
@@ -180,19 +166,86 @@ impl SystemIcon {
             "lua" => Self::Lua,
             "sh" | "bash" | "zsh" => Self::Shell,
             "nix" => Self::Nix,
-            // Documents
             "pdf" => Self::FilePdf,
             "doc" | "docx" | "odt" => Self::FileWord,
             "xls" | "xlsx" | "csv" | "ods" => Self::FileExcel,
             "ppt" | "pptx" | "odp" => Self::FilePowerpoint,
-            // Media
             "png" | "jpg" | "jpeg" | "svg" | "webp" | "ico" => Self::FileImage,
             "mp4" | "mkv" | "avi" | "mov" | "webm" => Self::FileVideo,
             "mp3" | "flac" | "wav" | "ogg" | "m4a" => Self::FileAudio,
-            // Archives
             "zip" | "tar" | "gz" | "7z" | "rar" | "xz" => Self::FileArchive,
-            // Default
             _ => Self::Folder,
         }
     }
+}
+
+pub fn home_dir() -> Option<PathBuf> {
+    #[cfg(target_family = "windows")]
+    {
+        if let Some(v) = env::var_os("USERPROFILE") {
+            return Some(PathBuf::from(v));
+        }
+        let drive = env::var_os("HOMEDRIVE");
+        let path = env::var_os("HOMEPATH");
+        if let (Some(d), Some(p)) = (drive, path) {
+            return Some(PathBuf::from(PathBuf::from(d).join(p)));
+        }
+    }
+
+    #[cfg(target_family = "unix")]
+    {
+        use std::env;
+
+        if let Some(home) = env::var_os("HOME") {
+            return Some(PathBuf::from(home));
+        }
+    }
+
+    None
+}
+
+use std::path::Path;
+
+pub fn get_icon_path(url_str: &str) -> String {
+    let domain = url_str
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .split('/')
+        .next()
+        .unwrap_or("default")
+        .to_string();
+
+    let home = std::env::var("HOME").unwrap_or_else(|_| "".into());
+    if home.is_empty() {
+        return "system-search".to_string();
+    }
+
+    let cache_dir = format!("{}/.config/anyrun/anyrun-favicons", home);
+    let icon_path = format!("{}/{}.png", cache_dir, domain);
+
+    if Path::new(&icon_path).exists() {
+        return icon_path;
+    }
+
+    let _ = std::fs::create_dir_all(&cache_dir);
+
+    let dest = icon_path.clone();
+    let download_url = format!(
+        "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://{}&size=64",
+        domain
+    );
+
+    std::thread::spawn(move || {
+        let _ = std::process::Command::new("curl")
+            .arg("-L")
+            .arg("-A")
+            .arg("Mozilla/5.0")
+            .arg("-s")
+            .arg("-o")
+            .arg(dest)
+            .arg(download_url)
+            .output();
+    });
+
+    "system-search".to_string()
 }
