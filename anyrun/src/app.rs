@@ -483,8 +483,8 @@ impl Component for App {
             // }
             AppMsg::EntryChanged(text) => {
                 let tx = self.tx.clone();
-                glib::timeout_add_local_once(std::time::Duration::from_millis(20), move || {
-                    let _ = tx.blocking_send(ipc::Request::Query { text });
+                glib::timeout_add_local_once(std::time::Duration::from_millis(120), move || {
+                    let _ = tx.try_send(ipc::Request::Query { text });
                 });
             }
             AppMsg::PluginOutput(PluginBoxOutput::MatchesLoaded) => {

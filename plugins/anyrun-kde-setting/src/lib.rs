@@ -14,6 +14,8 @@ pub struct KDESetting {
 #[derive(Deserialize)]
 struct Config {
     #[serde(default)]
+    show_results_immediately: bool,
+    #[serde(default)]
     prefix: String,
     #[serde(default)]
     custom_settings: Vec<KDESetting>,
@@ -22,6 +24,7 @@ struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            show_results_immediately: false,
             prefix: "set".into(),
             custom_settings: Vec::new(),
         }
@@ -62,10 +65,8 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
     let input_str = input.as_str();
     let prefix = &state.config.prefix;
 
-    if input_str.starts_with(prefix) {
-        let query = input_str[prefix.len()..].trim();
-
-        if query.is_empty() {
+    if let Some(query) = input_str.strip_prefix(prefix) {
+        if query.is_empty() && !state.config.show_results_immediately {
             return RVec::new();
         }
 
@@ -75,7 +76,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
             .into_iter()
             .map(|s| Match {
                 title: s.name.into(),
-                description: ROption::RSome(s.description.into()),
+                description: ROption::RSome(s.description.replace(" ", "_").into()),
                 use_pango: false,
                 icon: ROption::RSome("preferences-system".into()),
                 id: ROption::RNone,
@@ -126,6 +127,10 @@ fn get_kde_settings() -> Vec<KDESetting> {
 }
 
 pub fn search_settings(settings: Vec<KDESetting>, query: &str) -> Vec<KDESetting> {
+    if query.is_empty() {
+        return settings;
+    }
+
     let matcher = SkimMatcherV2::default();
 
     let mut ranked_results: Vec<(i64, KDESetting)> = settings
