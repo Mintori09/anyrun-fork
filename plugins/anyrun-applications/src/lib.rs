@@ -166,19 +166,41 @@ pub fn init(config_dir: RString) -> State {
             );
             Config::default()
         }),
-        Err(why) => {
-            eprintln!(
-                "[applications] Error reading config, using default: {}",
-                why
-            );
-            Config::default()
-        }
+        Err(_) => Config::default(),
     };
 
-    let entries = scrubber::scrubber(&config).unwrap_or_else(|why| {
-        eprintln!("[applicatiosn] Failed to load desktop entries: {}", why);
+    let mut entries = scrubber::scrubber(&config).unwrap_or_else(|why| {
+        eprintln!("[applications] Failed to load desktop entries: {}", why);
         Vec::new()
     });
+
+    let custom_scripts = [
+        ("Shutdown", "systemctl poweroff", "system-shutdown"),
+        ("Reboot", "systemctl reboot", "system-reboot"),
+        ("Lock Screen", "swaylock", "system-lock-screen"),
+        ("Suspend", "systemctl suspend", "system-suspend"),
+        ("Logout", "hyprctl dispatch exit", "system-log-out"),
+    ];
+
+    let mut next_id = entries.iter().map(|(_, id)| *id).max().unwrap_or(0) + 1;
+
+    for (name, exec, icon) in custom_scripts {
+        let entry = DesktopEntry {
+            name: name.to_string(),
+            exec: exec.to_string(),
+            icon: icon.to_string(),
+            localized_name: None,
+            desc: Some(format!("Execute {}", name)),
+            term: false,
+            keywords: vec!["system".to_string(), name.to_lowercase()],
+            localized_keywords: None,
+            is_action: true,
+            offset: 0,
+            path: None,
+        };
+        entries.push((entry, next_id));
+        next_id += 1;
+    }
 
     State { config, entries }
 }
