@@ -248,7 +248,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
                 }
             });
        
-        let res = futures::future::join_all(futures) // Wait for all futures to complete
+        let res = futures::future::join_all(futures) 
             .await;
 
         res

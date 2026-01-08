@@ -21,7 +21,7 @@ impl Default for Config {
             engines: vec![
                 SearchEngine {
                     name: "Google".into(),
-                    prefix: "g ".into(),
+                    prefix: "gg ".into(),
                     url: "https://www.google.com/search?q={}".into(),
                 },
                 SearchEngine {

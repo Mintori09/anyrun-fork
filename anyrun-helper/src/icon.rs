@@ -1,6 +1,7 @@
+use serde::Deserialize;
 use std::borrow::Cow;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
 pub enum SystemIcon {
     // --- NHÓM HỆ THỐNG & CÀI ĐẶT ---
     Settings,
@@ -30,16 +31,18 @@ pub enum SystemIcon {
     MailSend,
 
     // --- NHÓM PLUGIN ĐẶC THÙ (Anyrun specific) ---
-    Calculator, // Dùng cho plugin anyrun-calc
-    WebBrowser, // Dùng cho plugin websearch
-    Dictionary, // Dùng cho plugin dictionary
-    Terminal,   // Dùng cho plugin shell/stdin
-    SystemRun,  // Dùng cho plugin nix-run/applications
-    Symbol,     // Dùng cho plugin symbols
-    Language,   // Dùng cho plugin translate
-    Monitor,    // Dùng cho plugin randr (cấu hình màn hình)
+    Calculator,
+    WebBrowser,
+    Dictionary,
+    Terminal,
+    SystemRun,
+    Symbol,
+    Language,
+    Monitor,
+    Url,
 
     // --- NHÓM FILE TYPE & MIME ---
+    #[default]
     FileText,
     FileImage,
     FileVideo,
@@ -53,6 +56,27 @@ pub enum SystemIcon {
     Folder,
     FolderRemote, // Thư mục mạng/cloud
 
+    // --- NHÓM NGÔN NGỮ LẬP TRÌNH CHI TIẾT ---
+    Rust,
+    JavaScript,
+    TypeScript,
+    Python,
+    C,
+    Cpp,
+    Go,
+    PHP,
+    Lua,
+    Shell,
+    Nix,
+    Json,
+    Yaml,
+    Toml,
+    Html,
+    Css,
+    Obsidian,
+    Rclone,
+    Config,
+    Firefox,
     // --- TÙY CHỈNH ---
     Custom(Cow<'static, str>),
 }
@@ -110,22 +134,52 @@ impl SystemIcon {
             Self::FilePowerpoint => "x-office-presentation",
             Self::Folder => "folder",
             Self::FolderRemote => "folder-remote",
+            Self::Url => "text-html",
+
+            Self::Rust => "text-rust",
+            Self::JavaScript => "text-javascript",
+            Self::TypeScript => "text-typescript",
+            Self::Python => "text-x-python",
+            Self::C => "text-x-csrc",
+            Self::Cpp => "text-x-c++src",
+            Self::Go => "text-x-go",
+            Self::PHP => "application-x-php",
+            Self::Lua => "text-x-lua",
+            Self::Shell => "text-x-shellscript",
+            Self::Nix => "text-x-nix",
+            Self::Json => "application-json",
+            Self::Yaml => "text-x-yaml",
+            Self::Toml => "text-x-toml",
+            Self::Html => "text-html",
+            Self::Css => "text-css",
+            Self::Obsidian => "obsidian",
+            Self::Rclone => "rclone-browser",
+            Self::Config => "system-config-display",
+            Self::Firefox => "firefox",
 
             // Custom
-            Self::Custom(name) => name,
+            _ => "text-x-generic",
         }
     }
 
-    /// Khởi tạo icon tùy chỉnh nhanh
     pub fn custom<S: Into<Cow<'static, str>>>(name: S) -> Self {
         Self::Custom(name.into())
     }
 
-    /// Mở rộng hàm đoán Icon với nhiều định dạng hơn
     pub fn from_ext(ext: &str) -> Self {
         match ext.to_lowercase().as_str() {
             // Code
-            "rs" | "js" | "ts" | "py" | "c" | "cpp" | "h" | "go" | "nix" | "lua" => Self::FileCode,
+            "rs" => Self::Rust,
+            "js" => Self::JavaScript,
+            "ts" => Self::TypeScript,
+            "py" => Self::Python,
+            "c" | "h" => Self::C,
+            "cpp" | "hpp" | "cc" => Self::Cpp,
+            "go" => Self::Go,
+            "php" => Self::PHP,
+            "lua" => Self::Lua,
+            "sh" | "bash" | "zsh" => Self::Shell,
+            "nix" => Self::Nix,
             // Documents
             "pdf" => Self::FilePdf,
             "doc" | "docx" | "odt" => Self::FileWord,

@@ -21,7 +21,7 @@ members = [
     "plugins/anyrun-websearch",
     "plugins/anyrun-zoxide",
     "plugins/anyrun-kde-setting", 
-    "anyrun-helper", "plugins/anyrun-browser", 
+    "anyrun-helper", "plugins/anyrun-browser", "plugins/anyrun-sync-manager", "plugins/anyrun-power", 
 ]
 resolver = "2"
 

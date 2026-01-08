@@ -30,6 +30,13 @@ pub struct State {
     config: Config,
 }
 
+#[derive(Debug)]
+pub struct Browser {
+    title: String,
+    url: String,
+    id: String,
+}
+
 #[init]
 fn init(config_dir: RString) -> State {
     let config_path = PathBuf::from(config_dir.to_string()).join("browser.ron");
@@ -48,6 +55,73 @@ fn info() -> PluginInfo {
         name: "Browser Tabs".into(),
         icon: SystemIcon::WebBrowser.as_str().into(),
     }
+}
+
+fn home_dir() -> Option<PathBuf> {
+    #[cfg(target_family = "windows")]
+    {
+        if let Some(v) = env::var_os("USERPROFILE") {
+            return Some(PathBuf::from(v));
+        }
+        let drive = env::var_os("HOMEDRIVE");
+        let path = env::var_os("HOMEPATH");
+        if let (Some(d), Some(p)) = (drive, path) {
+            return Some(PathBuf::from(PathBuf::from(d).join(p)));
+        }
+    }
+
+    #[cfg(target_family = "unix")]
+    {
+        if let Some(home) = env::var_os("HOME") {
+            return Some(PathBuf::from(home));
+        }
+    }
+
+    None
+}
+fn get_icon_path(url_str: &str) -> String {
+    // Trích xuất domain sạch (ví dụ: laravel.com)
+    let domain = url_str
+        .replace("https://", "")
+        .replace("http://", "")
+        .split('/')
+        .next()
+        .unwrap_or("default")
+        .to_string();
+
+    let cache_dir = format!(
+        "{}/.config/anyrun/anyrun-favicons",
+        home_dir().unwrap().to_string_lossy()
+    );
+    let icon_path = format!("{}/{}.png", cache_dir, domain);
+
+    if std::path::Path::new(&icon_path).exists() {
+        return icon_path;
+    }
+
+    // Tạo thư mục và tải ngầm
+    let _ = std::fs::create_dir_all(cache_dir);
+    let dest = icon_path.clone();
+
+    // Sử dụng URL gstatic mới
+    let download_url = format!(
+        "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://{}&size=64",
+        domain
+    );
+
+    std::thread::spawn(move || {
+        // Flag -L để xử lý 301/302 redirect
+        let _ = std::process::Command::new("curl")
+            .arg("-L")
+            .arg("-s")
+            .arg("-o")
+            .arg(dest)
+            .arg(download_url)
+            .output();
+    });
+
+    // Trả về icon mặc định của hệ thống trong khi chờ tải
+    "web-browser".to_string()
 }
 
 #[get_matches]
@@ -70,11 +144,11 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
         return matches
             .into_iter()
             .take(state.config.max_entries)
-            .map(|(title, id)| Match {
-                title: title.into(),
-                description: ROption::RSome(id.into()),
+            .map(|browser| Match {
+                title: browser.title.into(),
+                description: ROption::RSome(browser.id.into()),
                 id: ROption::RNone,
-                icon: ROption::RSome(SystemIcon::WebBrowser.as_str().into()),
+                icon: ROption::RSome(get_icon_path(&browser.url).into()),
                 use_pango: false,
             })
             .collect::<Vec<_>>()
@@ -84,7 +158,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
     RVec::new()
 }
 
-fn fetch_tab(bin_path: &str) -> Vec<(String, String)> {
+fn fetch_tab(bin_path: &str) -> Vec<Browser> {
     let output = Command::new(bin_path).arg("list").output();
 
     match output {
@@ -94,9 +168,16 @@ fn fetch_tab(bin_path: &str) -> Vec<(String, String)> {
                 .lines()
                 .filter_map(|line| {
                     let parts: Vec<&str> = line.split('\t').collect();
-                    let id = parts.first()?.to_string();
-                    let title = parts.get(1)?.to_string();
-                    Some((title, id))
+
+                    if parts.len() >= 3 {
+                        Some(Browser {
+                            id: parts[0].to_string(),
+                            title: parts[1].to_string(),
+                            url: parts[2].to_string(),
+                        })
+                    } else {
+                        None
+                    }
                 })
                 .collect()
         }
@@ -104,34 +185,41 @@ fn fetch_tab(bin_path: &str) -> Vec<(String, String)> {
     }
 }
 
-fn get_matches_fuzzy_finder(
-    list: Vec<(String, String)>,
-    query: Vec<&str>,
-) -> Vec<(String, String)> {
+fn get_matches_fuzzy_finder(list: Vec<Browser>, query: Vec<&str>) -> Vec<Browser> {
     let matcher = SkimMatcherV2::default();
-    let mut matches: Vec<(i64, (String, String))> = list
+
+    let mut matches: Vec<(i64, Browser)> = list
         .into_iter()
-        .filter_map(|(title, id)| {
-            let mut total_score = 0;
+        .filter_map(|browser| {
             if query.is_empty() {
-                return Some((0, (title, id)));
+                return Some((0, browser));
             }
 
+            let mut total_score = 0;
+            let title_lower = browser.title.to_lowercase();
+            let url_lower = browser.url.to_lowercase();
+
             for part in &query {
-                if let Some(score) =
-                    matcher.fuzzy_match(&title.to_lowercase(), &part.to_lowercase())
-                {
-                    total_score += score;
-                } else {
-                    return None;
+                let part_lower = part.to_lowercase();
+
+                let title_score = matcher.fuzzy_match(&title_lower, &part_lower);
+
+                let url_score = matcher.fuzzy_match(&url_lower, &part_lower);
+
+                match (title_score, url_score) {
+                    (Some(s1), Some(s2)) => total_score += s1.max(s2),
+                    (Some(s), None) | (None, Some(s)) => total_score += s,
+                    (None, None) => return None,
                 }
             }
-            Some((total_score, (title, id)))
+
+            Some((total_score, browser))
         })
         .collect();
 
     matches.sort_by(|a, b| b.0.cmp(&a.0));
-    matches.into_iter().map(|(_, tab)| tab).collect()
+
+    matches.into_iter().map(|(_, browser)| browser).collect()
 }
 
 #[handler]
@@ -188,10 +276,9 @@ mod tests {
 
     #[test]
     fn test_fetch() {
-        let results: Vec<(String, String)> = fetch_tab("/home/mintori/.local/bin/brotab");
+        let results: Vec<Browser> = fetch_tab("/home/mintori/.local/bin/brotab");
         results.iter().for_each(|result| {
-            println!("{}", result.0);
-            println!("{}", result.1);
+            println!("{:?}", result);
         });
     }
 }
