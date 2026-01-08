@@ -12,7 +12,7 @@ static RE_COLOR_HEX: Lazy<Regex> =
 static RE_GIT_HASH: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[0-9a-f]{40}$").unwrap());
 static RE_EMAIL: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").unwrap());
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Copy)]
 pub enum InputCategory {
     Json,
     Code,
@@ -26,6 +26,7 @@ pub enum InputCategory {
     DateTime,
     Email,
     Plaintext,
+    All,
 }
 
 impl InputCategory {
@@ -107,6 +108,7 @@ impl InputCategory {
             Self::DateTime => SystemIcon::Language,
             Self::Email => SystemIcon::MailSend,
             Self::Plaintext => SystemIcon::FileText,
+            Self::All => SystemIcon::FileText,
         };
 
         icon.as_str().to_string()
