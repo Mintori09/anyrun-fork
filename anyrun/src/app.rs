@@ -483,7 +483,7 @@ impl Component for App {
             // }
             AppMsg::EntryChanged(text) => {
                 let tx = self.tx.clone();
-                glib::timeout_add_local_once(std::time::Duration::from_millis(50), move || {
+                glib::timeout_add_local_once(std::time::Duration::from_millis(20), move || {
                     let _ = tx.blocking_send(ipc::Request::Query { text });
                 });
             }

@@ -254,20 +254,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "anyrun-power"
-version = "0.1.0"
-dependencies = [
- "abi_stable",
- "anyrun-helper",
- "anyrun-plugin",
- "chrono",
- "fuzzy-matcher",
- "ron 0.12.0",
- "serde",
- "urlencoding",
-]
-
-[[package]]
 name = "anyrun-provider-ipc"
 version = "25.12.0"
 source = "git+https://github.com/anyrun-org/anyrun-provider#88a786e6029733a4c02c2c6b1024f65029b0b9cf"
