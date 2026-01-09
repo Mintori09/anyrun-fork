@@ -74,6 +74,7 @@ pub struct App {
     tx: mpsc::Sender<anyrun_provider_ipc::Request>,
     css_provider: gtk::CssProvider,
     selected_index: usize,
+    search_cancellable: Option<gio::Cancellable>,
 }
 
 impl App {
@@ -341,6 +342,7 @@ impl Component for App {
             tx,
             css_provider,
             selected_index: 0,
+            search_cancellable: None,
         };
 
         ComponentParts { model, widgets }
@@ -482,9 +484,22 @@ impl Component for App {
             //     }
             // }
             AppMsg::EntryChanged(text) => {
+                if let Some(cancellable) = self.search_cancellable.take() {
+                    cancellable.cancel();
+                }
+
+                let cancellable = gio::Cancellable::new();
+                self.search_cancellable = Some(cancellable.clone());
+
                 let tx = self.tx.clone();
-                glib::timeout_add_local_once(std::time::Duration::from_millis(120), move || {
-                    let _ = tx.try_send(ipc::Request::Query { text });
+                let delay_search = self.config.delay_search.clone();
+
+                glib::MainContext::default().spawn_local(async move {
+                    glib::timeout_future(std::time::Duration::from_millis(delay_search)).await;
+
+                    if !cancellable.is_cancelled() {
+                        let _ = tx.try_send(ipc::Request::Query { text });
+                    }
                 });
             }
             AppMsg::PluginOutput(PluginBoxOutput::MatchesLoaded) => {

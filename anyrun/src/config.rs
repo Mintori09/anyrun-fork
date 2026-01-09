@@ -36,6 +36,8 @@ pub struct Config {
     #[serde(default)]
     pub show_results_immediately: bool,
     #[serde(default)]
+    pub delay_search: u64,
+    #[serde(default)]
     pub max_entries: Option<u32>,
     #[serde(default = "Config::default_layer")]
     pub layer: Layer,
@@ -152,6 +154,7 @@ impl Default for Config {
             close_on_click: false,
             show_results_immediately: false,
             max_entries: None,
+            delay_search: 300,
             layer: Self::default_layer(),
             keyboard_mode: Self::default_keyboard_mode(),
             keybinds: Self::default_keybinds(),
