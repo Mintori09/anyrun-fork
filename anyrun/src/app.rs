@@ -492,10 +492,9 @@ impl Component for App {
                 self.search_cancellable = Some(cancellable.clone());
 
                 let tx = self.tx.clone();
-                let delay_search = self.config.delay_search.clone();
 
                 glib::MainContext::default().spawn_local(async move {
-                    glib::timeout_future(std::time::Duration::from_millis(delay_search)).await;
+                    glib::timeout_future(std::time::Duration::from_millis(250)).await;
 
                     if !cancellable.is_cancelled() {
                         let _ = tx.try_send(ipc::Request::Query { text });
