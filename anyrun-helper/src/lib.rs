@@ -13,13 +13,7 @@ pub fn focus_to_class(class: &str) {
 
             if let Some(window_id) = stdout.lines().next().map(|s| s.trim()) {
                 if !window_id.is_empty() {
-                    let activate_res = std::process::Command::new("kdotool")
-                        .args(["windowactivate", window_id])
-                        .spawn();
-
-                    if let Err(e) = activate_res {
-                        eprintln!("Failed to spawn kdotool activate: {}", e);
-                    }
+                    focus_to_window_by_id(window_id);
                 }
             } else {
                 eprintln!("No window found with class: '{}'", class);
@@ -34,5 +28,15 @@ pub fn focus_to_class(class: &str) {
         Err(e) => {
             eprintln!("Failed to execute kdotool. Is it installed? Error: {}", e);
         }
+    }
+}
+
+pub fn focus_to_window_by_id(window_id: &str) {
+    let activate_res = std::process::Command::new("kdotool")
+        .args(["windowactivate", window_id])
+        .spawn();
+
+    if let Err(e) = activate_res {
+        eprintln!("Failed to spawn kdotool activate: {}", e);
     }
 }

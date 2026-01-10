@@ -156,11 +156,7 @@ fn handler(selection: Match, state: &State) -> HandleResult {
         let content = get_clipboard();
         let cmd_script = action.command.replace("{clip}", &content);
 
-        let _ = Command::new("sh")
-            .arg("-c")
-            .arg(cmd_script)
-            .env("CLIP_CONTENT", content)
-            .spawn();
+        let _ = Command::new("sh").arg("-c").arg(cmd_script).spawn();
     }
 
     HandleResult::Close
