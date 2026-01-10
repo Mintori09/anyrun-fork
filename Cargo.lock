@@ -300,7 +300,6 @@ dependencies = [
  "anyrun-helper",
  "anyrun-plugin",
  "chrono",
- "chrono-english",
  "evalexpr",
  "fuzzy-matcher",
  "heck 0.5.0",
@@ -733,16 +732,6 @@ dependencies = [
  "num-traits",
  "wasm-bindgen",
  "windows-link",
-]
-
-[[package]]
-name = "chrono-english"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38a56613410c9249673f4676ab8d27c70949814accb27b6b738009e2ff1034a1"
-dependencies = [
- "chrono",
- "scanlex",
 ]
 
 [[package]]
@@ -2501,6 +2490,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kill-port"
+version = "0.1.0"
+dependencies = [
+ "abi_stable",
+ "anyrun-helper",
+ "anyrun-plugin",
+ "fuzzy-matcher",
+ "ron 0.12.0",
+ "serde",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3693,12 +3694,6 @@ checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
 ]
-
-[[package]]
-name = "scanlex"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "088c5d71572124929ea7549a8ce98e1a6fd33d0a38367b09027b382e67c033db"
 
 [[package]]
 name = "scopeguard"
