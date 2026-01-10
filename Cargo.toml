@@ -22,7 +22,7 @@ members = [
     "plugins/anyrun-kde-setting", 
     "anyrun-helper", "plugins/anyrun-browser", "plugins/anyrun-sync-manager", 
     "plugins/kde-clipboard"
-, "plugins/kde-active-window"]
+, "plugins/kde-active-window", "plugins/kill-port"]
 resolver = "2"
 
 [workspace.dependencies]

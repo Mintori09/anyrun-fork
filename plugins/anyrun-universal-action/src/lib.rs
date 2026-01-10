@@ -132,7 +132,6 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
 
 fn get_clipboard() -> String {
     Command::new("wl-paste")
-        .args(["--type", "text/plain", "--no-newline"])
         .output()
         .map(|out| {
             if out.status.success() {
