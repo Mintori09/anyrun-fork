@@ -9,7 +9,6 @@ use url::Url;
 
 static RE_COLOR_HEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$").unwrap());
-static RE_GIT_HASH: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[0-9a-f]{40}$").unwrap());
 static RE_EMAIL: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").unwrap());
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Copy)]
@@ -17,8 +16,6 @@ pub enum InputCategory {
     Json,
     Code,
     ShellCommand,
-    GitHash,
-    MathExpression,
     Url,
     FilePath,
     IpAddress,
@@ -48,10 +45,6 @@ impl InputCategory {
             return Self::Email;
         }
 
-        if RE_GIT_HASH.is_match(trimmed) {
-            return Self::GitHash;
-        }
-
         if Url::parse(trimmed).is_ok_and(|url| url.scheme() == "http" || url.scheme() == "https") {
             return Self::Url;
         }
@@ -65,13 +58,6 @@ impl InputCategory {
             && serde_json::from_str::<serde_json::Value>(trimmed).is_ok()
         {
             return Self::Json;
-        }
-
-        if trimmed.chars().any(|c| "+-*/^%".contains(c))
-            && trimmed.chars().any(|c| c.is_numeric())
-            && evalexpr::build_operator_tree::<evalexpr::DefaultNumericTypes>(trimmed).is_ok()
-        {
-            return Self::MathExpression;
         }
 
         if parse_date_string(trimmed, Utc::now(), Dialect::Uk).is_ok()
@@ -99,8 +85,6 @@ impl InputCategory {
             Self::Json => SystemIcon::Json,
             Self::Code => SystemIcon::FileCode,
             Self::ShellCommand => SystemIcon::Terminal,
-            Self::GitHash => SystemIcon::Symbol,
-            Self::MathExpression => SystemIcon::Calculator,
             Self::Url => SystemIcon::Url,
             Self::FilePath => SystemIcon::Folder,
             Self::IpAddress => SystemIcon::NetworkStatus,

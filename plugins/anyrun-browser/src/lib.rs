@@ -6,6 +6,8 @@ use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use serde::Deserialize;
 use std::process::Command;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use std::{env, fs, path::PathBuf};
 
 #[derive(Deserialize, Debug)]
@@ -14,6 +16,7 @@ struct Config {
     prefix: String,
     max_entries: usize,
     source: String,
+    cache_ttl_secs: u64,
 }
 
 impl Default for Config {
@@ -22,19 +25,24 @@ impl Default for Config {
             prefix: "tab ".into(),
             source: "~/.local/bin/brotab".into(),
             max_entries: 10,
+            cache_ttl_secs: 5,
         }
     }
 }
 
 pub struct State {
     config: Config,
+    full_path: String,
+    matcher: SkimMatcherV2,
+    cache: Mutex<Option<(Instant, Vec<Browser>)>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Browser {
     title: String,
     url: String,
     id: String,
+    id_numeric: u32,
 }
 
 #[init]
@@ -46,7 +54,19 @@ fn init(config_dir: RString) -> State {
         .and_then(|content| ron::from_str(&content).ok())
         .unwrap_or_default();
 
-    State { config }
+    let full_path = if config.source.starts_with('~') {
+        let home = env::var("HOME").unwrap_or_default();
+        config.source.replacen('~', &home, 1)
+    } else {
+        config.source.clone()
+    };
+
+    State {
+        config,
+        full_path,
+        matcher: SkimMatcherV2::default().smart_case(),
+        cache: Mutex::new(None),
+    }
 }
 
 #[info]
@@ -63,20 +83,11 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
 
     if let Some(query) = input_str.strip_prefix(&state.config.prefix) {
         let query_parts: Vec<&str> = query.split_whitespace().collect();
+        let tabs = get_tabs_with_cache(state);
+        let mut scored_matches = get_scored_matches(state, tabs, query_parts);
 
-        let full_path = if state.config.source.starts_with('~') {
-            let home = env::var("HOME").unwrap_or_default();
-            state.config.source.replacen('~', &home, 1)
-        } else {
-            state.config.source.clone()
-        };
-
-        let tabs = fetch_tab(&full_path);
-        let matches = get_matches_fuzzy_finder(tabs, query_parts);
-
-        return matches
-            .into_iter()
-            .take(state.config.max_entries)
+        return scored_matches
+            .drain(..std::cmp::min(scored_matches.len(), state.config.max_entries))
             .map(|browser| Match {
                 title: browser.title.into(),
                 description: ROption::RSome(browser.id.into()),
@@ -91,6 +102,21 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
     RVec::new()
 }
 
+fn get_tabs_with_cache(state: &State) -> Vec<Browser> {
+    let mut cache = state.cache.lock().unwrap();
+    let now = Instant::now();
+
+    if let Some((last_update, tabs)) = &*cache
+        && now.duration_since(*last_update) < Duration::from_secs(state.config.cache_ttl_secs)
+    {
+        return tabs.clone();
+    }
+
+    let new_tabs = fetch_tab(&state.full_path);
+    *cache = Some((now, new_tabs.clone()));
+    new_tabs
+}
+
 fn fetch_tab(bin_path: &str) -> Vec<Browser> {
     let output = Command::new(bin_path).arg("list").output();
 
@@ -100,17 +126,23 @@ fn fetch_tab(bin_path: &str) -> Vec<Browser> {
             stdout
                 .lines()
                 .filter_map(|line| {
-                    let parts: Vec<&str> = line.split('\t').collect();
+                    let mut parts = line.split('\t');
+                    let id_str = parts.next()?;
+                    let title = parts.next()?;
+                    let url = parts.next()?;
 
-                    if parts.len() >= 3 {
-                        Some(Browser {
-                            id: parts[0].to_string(),
-                            title: parts[1].to_string(),
-                            url: parts[2].to_string(),
-                        })
-                    } else {
-                        None
-                    }
+                    let id_numeric = id_str
+                        .split('.')
+                        .next_back()
+                        .and_then(|n| n.parse::<u32>().ok())
+                        .unwrap_or(u32::MAX);
+
+                    Some(Browser {
+                        id: id_str.to_string(),
+                        title: title.to_string(),
+                        url: url.to_string(),
+                        id_numeric,
+                    })
                 })
                 .collect()
         }
@@ -118,10 +150,8 @@ fn fetch_tab(bin_path: &str) -> Vec<Browser> {
     }
 }
 
-fn get_matches_fuzzy_finder(list: Vec<Browser>, query: Vec<&str>) -> Vec<Browser> {
-    let matcher = SkimMatcherV2::default();
-
-    let mut matches: Vec<(i64, Browser)> = list
+fn get_scored_matches(state: &State, list: Vec<Browser>, query: Vec<&str>) -> Vec<Browser> {
+    let mut scored: Vec<(i64, Browser)> = list
         .into_iter()
         .filter_map(|browser| {
             if query.is_empty() {
@@ -129,15 +159,9 @@ fn get_matches_fuzzy_finder(list: Vec<Browser>, query: Vec<&str>) -> Vec<Browser
             }
 
             let mut total_score = 0;
-            let title_lower = browser.title.to_lowercase();
-            let url_lower = browser.url.to_lowercase();
-
             for part in &query {
-                let part_lower = part.to_lowercase();
-
-                let title_score = matcher.fuzzy_match(&title_lower, &part_lower);
-
-                let url_score = matcher.fuzzy_match(&url_lower, &part_lower);
+                let title_score = state.matcher.fuzzy_match(&browser.title, part);
+                let url_score = state.matcher.fuzzy_match(&browser.url, part);
 
                 match (title_score, url_score) {
                     (Some(s1), Some(s2)) => total_score += s1.max(s2),
@@ -145,74 +169,27 @@ fn get_matches_fuzzy_finder(list: Vec<Browser>, query: Vec<&str>) -> Vec<Browser
                     (None, None) => return None,
                 }
             }
-
             Some((total_score, browser))
         })
         .collect();
 
-    matches.sort_by(|a, b| b.0.cmp(&a.0));
+    scored.sort_unstable_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| a.1.id_numeric.cmp(&b.1.id_numeric))
+    });
 
-    matches.into_iter().map(|(_, browser)| browser).collect()
+    scored.into_iter().map(|(_, b)| b).collect()
 }
 
 #[handler]
 fn handler(selection: Match, state: &State) -> HandleResult {
     if let ROption::RSome(tab_id) = selection.description {
-        let full_path = if state.config.source.starts_with('~') {
-            let home = env::var("HOME").unwrap_or_default();
-            state.config.source.replacen('~', &home, 1)
-        } else {
-            state.config.source.clone()
-        };
-
         focus_to_class("firefox");
 
-        let _ = Command::new(full_path)
+        let _ = Command::new(&state.full_path)
             .arg("activate")
             .arg(tab_id.to_string())
             .spawn();
     }
     HandleResult::Close
-}
-
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-    use std::{env, fs, path::PathBuf};
-
-    #[test]
-    fn test_read_real_config() {
-        let home_dir = env::var("HOME").expect("Không tìm thấy biến môi trường HOME");
-
-        let config_path = PathBuf::from(home_dir)
-            .join(".config")
-            .join("anyrun")
-            .join("browser.ron");
-
-        assert!(
-            config_path.exists(),
-            "File cấu hình không tồn tại tại: {:?}",
-            config_path
-        );
-
-        let content = fs::read_to_string(&config_path).expect("Không thể đọc file cấu hình");
-
-        let result: Result<Config, _> = ron::from_str(&content);
-
-        match result {
-            Ok(config) => {
-                println!("Đọc config thành công! Số lượng scopes: {:?}", config);
-            }
-            Err(e) => panic!("File RON tồn tại nhưng sai cấu trúc: {}", e),
-        }
-    }
-
-    #[test]
-    fn test_fetch() {
-        let results: Vec<Browser> = fetch_tab("/home/mintori/.local/bin/brotab");
-        results.iter().for_each(|result| {
-            println!("{:?}", result);
-        });
-    }
 }

@@ -1,0 +1,15 @@
+[package]
+name = "kde-clipboard"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"] 
+
+[dependencies]
+anyrun-plugin = { path = "../../anyrun-plugin" }
+abi_stable    = "0.11.1"
+ron           = "0.12.0"
+fuzzy-matcher = "0.3"
+zbus = { version = "4.4", features = ["blocking"] }
+serde         = { features = [ "derive" ], version = "1.0.228" }

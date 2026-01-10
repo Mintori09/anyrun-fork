@@ -206,46 +206,54 @@ pub fn home_dir() -> Option<PathBuf> {
 
 use std::path::Path;
 
-pub fn get_icon_path(url_str: &str) -> String {
-    let domain = url_str
+use std::process::Command;
+
+pub fn get_icon_path(input: &str) -> String {
+    let identifier = input
         .trim_start_matches("https://")
         .trim_start_matches("http://")
         .split('/')
         .next()
-        .unwrap_or("default")
-        .to_string();
+        .unwrap_or("default");
 
-    let home = std::env::var("HOME").unwrap_or_else(|_| "".into());
-    if home.is_empty() {
-        return "system-search".to_string();
+    if !input.contains("://") {
+        return identifier.to_string();
     }
 
+    let Ok(home) = std::env::var("HOME") else {
+        return "system-search".to_string();
+    };
+
     let cache_dir = format!("{}/.config/anyrun/anyrun-favicons", home);
-    let icon_path = format!("{}/{}.png", cache_dir, domain);
+    let icon_path = format!("{}/{}.png", cache_dir, identifier);
 
     if Path::new(&icon_path).exists() {
         return icon_path;
     }
 
-    let _ = std::fs::create_dir_all(&cache_dir);
+    download_favicon_async(&cache_dir, &icon_path, identifier);
 
-    let dest = icon_path.clone();
-    let download_url = format!(
+    "web-browser".to_string()
+}
+
+fn download_favicon_async(cache_dir: &str, dest_path: &str, domain: &str) {
+    let _ = std::fs::create_dir_all(cache_dir);
+
+    let dest = dest_path.to_string();
+    let url = format!(
         "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://{}&size=64",
         domain
     );
 
     std::thread::spawn(move || {
-        let _ = std::process::Command::new("curl")
+        let _ = Command::new("curl")
             .arg("-L")
             .arg("-A")
             .arg("Mozilla/5.0")
             .arg("-s")
             .arg("-o")
             .arg(dest)
-            .arg(download_url)
+            .arg(url)
             .output();
     });
-
-    "system-search".to_string()
 }

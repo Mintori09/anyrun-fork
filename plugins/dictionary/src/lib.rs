@@ -1,8 +1,7 @@
-use std::fs;
-
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::*;
 use serde::Deserialize;
+use std::fs;
 
 #[derive(Deserialize)]
 pub struct Config {

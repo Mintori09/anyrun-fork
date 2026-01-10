@@ -21,7 +21,8 @@ members = [
     "plugins/anyrun-zoxide",
     "plugins/anyrun-kde-setting", 
     "anyrun-helper", "plugins/anyrun-browser", "plugins/anyrun-sync-manager", 
-]
+    "plugins/kde-clipboard"
+, "plugins/kde-active-window"]
 resolver = "2"
 
 [workspace.dependencies]
