@@ -21,23 +21,6 @@ use tokio::sync::mpsc;
 
 const DEFAULT_CSS: &str = include_str!("../res/style.css");
 
-// fn simple_log(message: &str) {
-//     if let Ok(home) = env::var("HOME") {
-//         let mut path = PathBuf::from(home);
-//         path.push("Desktop");
-//         path.push("log.txt");
-//
-//         let file = std::fs::OpenOptions::new().create(true).append(true).open(path);
-//
-//         if let Ok(mut file) = file {
-//             let now = std::chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-//
-//             let log_entry = format!("[{}] {}\n", now, message);
-//             let _ = file.write_all(log_entry.as_bytes());
-//         }
-//     }
-// }
-
 #[derive(Deserialize, Serialize)]
 pub enum PostRunAction {
     Stdout(Vec<u8>),
@@ -494,7 +477,7 @@ impl Component for App {
                 let tx = self.tx.clone();
 
                 glib::MainContext::default().spawn_local(async move {
-                    glib::timeout_future(std::time::Duration::from_millis(250)).await;
+                    glib::timeout_future(std::time::Duration::from_millis(100)).await;
 
                     if !cancellable.is_cancelled() {
                         let _ = tx.try_send(ipc::Request::Query { text });
