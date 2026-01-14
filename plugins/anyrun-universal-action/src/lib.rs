@@ -2,11 +2,12 @@ mod category;
 
 use abi_stable::std_types::ROption::{RNone, RSome};
 use abi_stable::std_types::{RString, RVec};
+use anyrun_helper::get_clipboard;
 use anyrun_plugin::*;
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use serde::Deserialize;
-use std::fs;
+use std::fs::{self};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -19,13 +20,13 @@ struct Action {
     data_type: InputCategory,
 }
 
+#[derive(Deserialize, Debug)]
 struct OptimizedAction {
     original_name: String,
     lowercase_name: String,
     command: String,
     data_type: InputCategory,
 }
-
 #[derive(Deserialize, Debug)]
 struct Config {
     #[serde(default = "default_prefix")]
@@ -50,12 +51,12 @@ pub struct State {
 
 #[init]
 fn init(config_dir: RString) -> State {
-    let config_path = PathBuf::from(config_dir.to_string()).join("universal-action.ron");
+    let config_path = PathBuf::from(config_dir.to_string()).join("universal_action.ron");
 
     let config: Config = fs::read_to_string(&config_path)
-        .ok()
-        .and_then(|content| ron::from_str(&content).ok())
-        .unwrap_or_else(|| Config {
+        .map_err(|e| format!("IO Error: {}", e))
+        .and_then(|content| ron::from_str(&content).map_err(|e| format!("RON Error: {}", e)))
+        .unwrap_or_else(|_err| Config {
             prefix: default_prefix(),
             actions: Vec::new(),
             max_entries: 5,
@@ -103,9 +104,22 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
         .iter()
         .filter(|a| a.data_type == clip_type || a.data_type == InputCategory::All)
         .filter_map(|action| {
+            if action.lowercase_name.is_empty() {
+                return Some((
+                    0,
+                    Match {
+                        title: action.original_name.clone().into(),
+                        description: RSome(format!("Run action for {:?}", clip_type).into()),
+                        icon: RSome(clip_type.get_icon().into()),
+                        id: RNone,
+                        use_pango: false,
+                    },
+                ));
+            }
+
             state
                 .matcher
-                .fuzzy_match(&action.lowercase_name, &query_lower)
+                .fuzzy_match(&action.lowercase_name, query_lower.trim_end())
                 .map(|score| {
                     (
                         score,
@@ -130,19 +144,6 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
         .collect()
 }
 
-fn get_clipboard() -> String {
-    Command::new("wl-paste")
-        .output()
-        .map(|out| {
-            if out.status.success() {
-                String::from_utf8_lossy(&out.stdout).into_owned()
-            } else {
-                String::new()
-            }
-        })
-        .unwrap_or_default()
-}
-
 #[handler]
 fn handler(selection: Match, state: &State) -> HandleResult {
     let name = selection.title.to_string();
@@ -159,4 +160,29 @@ fn handler(selection: Match, state: &State) -> HandleResult {
     }
 
     HandleResult::Close
+}
+
+#[test]
+fn check_url() {
+    let url = "https://www.youtube.com/watch?v=CRLEfo_4X0M";
+    let input = InputCategory::detect(url);
+    assert_eq!(input, InputCategory::Url);
+}
+
+#[test]
+fn check_clipboard() {
+    let content = "clipboard test";
+
+    let status = Command::new("wl-copy")
+        .arg(content)
+        .status()
+        .expect("Failed to execute wl-copy. Is wl-clipboard installed?");
+
+    assert!(status.success(), "wl-copy command failed");
+
+    // thread::sleep(Duration::from_millis(100));
+
+    let clipboard = get_clipboard();
+
+    assert_eq!(format!("{}\n", content), clipboard);
 }

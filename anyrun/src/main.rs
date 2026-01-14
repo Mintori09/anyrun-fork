@@ -112,7 +112,7 @@ fn fast_ipc_call(method: &str) {
     let conn = gio::bus_get_sync(gio::BusType::Session, Option::<&gio::Cancellable>::None)
         .expect("Failed to connect to DBus session bus");
 
-    let _ = conn.call_sync(
+    conn.call(
         Some("org.anyrun.anyrun"),
         "/org/anyrun/anyrun",
         "org.anyrun.Anyrun",
@@ -120,55 +120,92 @@ fn fast_ipc_call(method: &str) {
         None,
         None,
         gio::DBusCallFlags::NONE,
-        500,
+        -1,
         Option::<&gio::Cancellable>::None,
+        |_| {},
     );
+
+    let context = glib::MainContext::default();
+    while context.pending() {
+        context.iteration(false);
+    }
 }
 
 fn run_client(args: Args) {
-    let app = gtk::Application::new(Some("org.anyrun.anyrun"), Default::default());
-    app.register(Option::<&gio::Cancellable>::None).unwrap();
+    let app = gtk::Application::new(Some("org.anyrun.anyrun"), gio::ApplicationFlags::FLAGS_NONE);
+
+    if let Err(e) = app.register(Option::<&gio::Cancellable>::None) {
+        eprintln!("Failed to register application: {e}");
+        return;
+    }
 
     if app.is_remote() {
+        let conn = app
+            .dbus_connection()
+            .expect("Failed to get DBus connection");
+
+        // Đọc stdin và env một cách tối ưu
         let mut stdin = Vec::new();
         if !io::stdin().is_terminal() {
-            let _ = io::stdin().read_to_end(&mut stdin);
+            let mut handle = io::stdin().lock();
+            let _ = handle.read_to_end(&mut stdin);
         }
-
         let env: Vec<(String, String)> = std::env::vars().collect();
 
-        let conn = app.dbus_connection().unwrap();
+        // 1. Serialize dữ liệu
         let init_payload = app::AppInit { args, stdin, env };
-        let serialized_data = serde_json::to_vec(&init_payload).unwrap();
+        let serialized_data = serde_json::to_vec(&init_payload).expect("Failed to serialize");
 
-        let msg = (serialized_data,).to_variant();
+        // 2. CHỖ SỬA LỖI: Tạo glib::Bytes bằng cách move dữ liệu (zero-copy)
+        let bytes = glib::Bytes::from_owned(serialized_data);
 
-        let res = conn
-            .call_sync(
-                Some("org.anyrun.anyrun"),
-                "/org/anyrun/anyrun",
-                "org.anyrun.Anyrun",
-                "Show",
-                Some(&msg),
-                None,
-                gio::DBusCallFlags::NONE,
-                -1,
-                Option::<&gio::Cancellable>::None,
-            )
-            .expect("Daemon call failed");
+        // 3. Tạo Variant từ Bytes (Cần truyền tham chiếu &bytes)
+        let msg = glib::Variant::from_bytes::<(Vec<u8>,)>(&bytes);
 
-        let Some(bytes) = res.child_value(0).get::<Vec<u8>>() else {
-            return;
-        };
+        let main_loop = glib::MainLoop::new(None, false);
+        let main_loop_clone = main_loop.clone();
 
-        let Ok(app::PostRunAction::Stdout(stdout)) =
-            serde_json::from_slice::<app::PostRunAction>(&bytes)
-        else {
-            return;
-        };
+        glib::timeout_add_local(
+            std::time::Duration::from_secs(5),
+            glib::clone!(
+                #[strong]
+                main_loop_clone,
+                move || {
+                    main_loop_clone.quit();
+                    glib::ControlFlow::Break
+                }
+            ),
+        );
 
-        let _ = io::stdout().lock().write_all(&stdout);
+        conn.call(
+            Some("org.anyrun.anyrun"),
+            "/org/anyrun/anyrun",
+            "org.anyrun.Anyrun",
+            "Show",
+            Some(&msg),
+            None,
+            gio::DBusCallFlags::NONE,
+            -1,
+            Option::<&gio::Cancellable>::None,
+            move |result| {
+                if let Ok(res) = result {
+                    if let Some(bytes_res) = res.child_value(0).get::<Vec<u8>>() {
+                        if let Ok(app::PostRunAction::Stdout(stdout_data)) =
+                            serde_json::from_slice::<app::PostRunAction>(&bytes_res)
+                        {
+                            let mut out = io::stdout().lock();
+                            let _ = out.write_all(&stdout_data);
+                            let _ = out.flush();
+                        }
+                    }
+                }
+                main_loop_clone.quit();
+            },
+        );
+
+        main_loop.run();
     } else {
+        // Luồng chạy Daemon
         let mut stdin = Vec::new();
         if !io::stdin().is_terminal() {
             let _ = io::stdin().read_to_end(&mut stdin);
@@ -186,6 +223,7 @@ fn run_client(args: Args) {
                 None,
             );
         });
+
         app.run_with_args(&Vec::<String>::new());
     }
 }

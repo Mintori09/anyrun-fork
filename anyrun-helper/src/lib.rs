@@ -1,3 +1,5 @@
+use arboard::Clipboard;
+
 pub mod icon;
 pub mod log;
 pub mod mazzy_matcher;
@@ -39,4 +41,18 @@ pub fn focus_to_window_by_id(window_id: &str) {
     if let Err(e) = activate_res {
         eprintln!("Failed to spawn kdotool activate: {}", e);
     }
+}
+
+pub fn get_clipboard() -> String {
+    let mut clipboard = match Clipboard::new() {
+        Ok(cb) => cb,
+        Err(_) => return String::new(),
+    };
+
+    clipboard.get_text().unwrap_or_default()
+}
+
+pub fn set_clipboard(content: String) -> Result<(), arboard::Error> {
+    let mut clipboard = Clipboard::new()?;
+    clipboard.set_text(content)
 }

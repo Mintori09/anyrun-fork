@@ -16,6 +16,8 @@ pub enum InputCategory {
     Email,
     Plaintext,
     All,
+    #[serde(other)]
+    Unknown,
 }
 
 impl InputCategory {
@@ -64,6 +66,7 @@ impl InputCategory {
             Self::Email => SystemIcon::MailSend,
             Self::Plaintext => SystemIcon::FileText,
             Self::All => SystemIcon::FileText,
+            Self::Unknown => SystemIcon::SystemRun,
         };
 
         icon.as_str().to_string()
