@@ -1,0 +1,19 @@
+[workspace]
+members = [
+  "anyrun-provider-ipc"
+]
+
+[package]
+name = "anyrun-provider"
+version = "25.12.0"
+edition = "2024"
+
+[workspace.dependencies]
+anyrun-interface = { git = "https://github.com/anyrun-org/anyrun-interface" }
+
+[dependencies]
+clap = { version = "4.5.46", features = ["derive"] }
+anyrun-interface.workspace = true
+anyrun-provider-ipc = { path = "./anyrun-provider-ipc" }
+tokio = { version = "1.48", features = ["macros", "rt-multi-thread", "net", "sync"] }
+futures = "0.3.31"
