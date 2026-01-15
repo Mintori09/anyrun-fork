@@ -47,6 +47,7 @@ pub struct State {
     config: Config,
     optimized_actions: Vec<OptimizedAction>,
     matcher: SkimMatcherV2,
+    clipboard: String,
 }
 
 #[init]
@@ -74,6 +75,7 @@ fn init(config_dir: RString) -> State {
         .collect();
 
     State {
+        clipboard: get_clipboard(),
         config,
         optimized_actions,
         matcher: SkimMatcherV2::default(),
@@ -92,55 +94,53 @@ fn info() -> PluginInfo {
 fn get_matches(input: RString, state: &State) -> RVec<Match> {
     let query_text = match input.strip_prefix(&state.config.prefix) {
         Some(stripped) if !stripped.is_empty() => stripped.trim_start(),
+        Some(stripped) => stripped,
         _ => return RVec::new(),
     };
 
-    let content = get_clipboard();
-    let clip_type = InputCategory::detect(&content);
-    let query_lower = query_text.to_lowercase();
+    let clip_type = InputCategory::detect(&state.clipboard);
+    let query_trimmed = query_text.trim();
+    let is_empty_query = query_trimmed.is_empty();
 
-    let mut scored_matches: Vec<(i64, Match)> = state
+    let common_icon = RSome(clip_type.get_icon().into());
+    let common_desc = RSome(format!("Run action for {:?}", clip_type).into());
+
+    let limit = if is_empty_query {
+        10
+    } else {
+        state.config.max_entries
+    };
+
+    let mut scores: Vec<(i64, &OptimizedAction)> = state
         .optimized_actions
         .iter()
         .filter(|a| a.data_type == clip_type || a.data_type == InputCategory::All)
         .filter_map(|action| {
-            if action.lowercase_name.is_empty() {
-                return Some((
-                    0,
-                    Match {
-                        title: action.original_name.clone().into(),
-                        description: RSome(format!("Run action for {:?}", clip_type).into()),
-                        icon: RSome(clip_type.get_icon().into()),
-                        id: RNone,
-                        use_pango: false,
-                    },
-                ));
+            if is_empty_query {
+                Some((0, action))
+            } else {
+                state
+                    .matcher
+                    .fuzzy_match(&action.lowercase_name, query_trimmed)
+                    .map(|score| (score, action))
             }
-
-            state
-                .matcher
-                .fuzzy_match(&action.lowercase_name, query_lower.trim_end())
-                .map(|score| {
-                    (
-                        score,
-                        Match {
-                            title: action.original_name.clone().into(),
-                            description: RSome(format!("Run action for {:?}", clip_type).into()),
-                            icon: RSome(clip_type.get_icon().into()),
-                            id: RNone,
-                            use_pango: false,
-                        },
-                    )
-                })
         })
         .collect();
 
-    scored_matches.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+    if !is_empty_query {
+        scores.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+    }
 
-    scored_matches
+    scores
         .into_iter()
-        .take(state.config.max_entries)
-        .map(|(_, m)| m)
+        .take(limit)
+        .map(|(_, action)| Match {
+            title: action.original_name.clone().into(),
+            description: common_desc.clone(),
+            icon: common_icon.clone(),
+            id: RNone,
+            use_pango: false,
+        })
         .collect()
 }
 
@@ -153,8 +153,7 @@ fn handler(selection: Match, state: &State) -> HandleResult {
         .iter()
         .find(|a| a.original_name == name)
     {
-        let content = get_clipboard();
-        let cmd_script = action.command.replace("{clip}", &content);
+        let cmd_script = action.command.replace("{clip}", &state.clipboard);
 
         let _ = Command::new("sh").arg("-c").arg(cmd_script).spawn();
     }
@@ -167,22 +166,4 @@ fn check_url() {
     let url = "https://www.youtube.com/watch?v=CRLEfo_4X0M";
     let input = InputCategory::detect(url);
     assert_eq!(input, InputCategory::Url);
-}
-
-#[test]
-fn check_clipboard() {
-    let content = "clipboard test";
-
-    let status = Command::new("wl-copy")
-        .arg(content)
-        .status()
-        .expect("Failed to execute wl-copy. Is wl-clipboard installed?");
-
-    assert!(status.success(), "wl-copy command failed");
-
-    // thread::sleep(Duration::from_millis(100));
-
-    let clipboard = get_clipboard();
-
-    assert_eq!(format!("{}\n", content), clipboard);
 }

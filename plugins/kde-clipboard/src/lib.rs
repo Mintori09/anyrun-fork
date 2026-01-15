@@ -4,11 +4,10 @@ use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use serde::Deserialize;
 use std::fs;
+use std::time::{Duration, Instant};
 use zbus::blocking::Connection;
 use zbus::proxy;
 
-// --- Định nghĩa Proxy D-Bus ---
-// Giải pháp: Đặt tên khác nhau cho blocking và async để tránh lỗi E0428/E0592
 #[proxy(
     interface = "org.kde.klipper.klipper",
     default_service = "org.kde.klipper",
@@ -50,6 +49,8 @@ impl Default for Config {
 pub struct State {
     config: Config,
     connection: Connection,
+    matcher: SkimMatcherV2,
+    cached_history: std::sync::Mutex<(Instant, Vec<String>)>,
 }
 
 #[init]
@@ -58,10 +59,17 @@ fn init(config_dir: RString) -> State {
         .map(|content| ron::from_str(&content).unwrap_or_default())
         .unwrap_or_default();
 
-    // Kết nối D-Bus (Blocking)
     let connection = Connection::session().expect("Failed to connect to D-Bus");
 
-    State { config, connection }
+    let cached_history =
+        std::sync::Mutex::new((Instant::now() - Duration::from_secs(60), Vec::new()));
+
+    State {
+        config,
+        connection,
+        matcher: SkimMatcherV2::default().smart_case(),
+        cached_history,
+    }
 }
 
 #[info]
@@ -75,63 +83,68 @@ fn info() -> PluginInfo {
 #[get_matches]
 fn get_matches(input: RString, state: &State) -> RVec<Match> {
     let input_str = input.as_str();
-    let prefix = &state.config.prefix;
+    let query = match input_str.strip_prefix(&state.config.prefix) {
+        Some(q) => q.trim(),
+        None => return RVec::new(),
+    };
 
-    if let Some(query) = input_str.strip_prefix(prefix) {
-        let query = query.trim();
+    let mut cache = state.cached_history.lock().unwrap();
 
-        // Khởi tạo proxy từ connection có sẵn
-        let proxy = match KlipperProxy::new(&state.connection) {
-            Ok(p) => p,
-            Err(_) => return RVec::new(),
-        };
+    if cache.0.elapsed() > Duration::from_millis(1000) {
+        let new_data = KlipperProxy::new(&state.connection)
+            .ok()
+            .and_then(|proxy| proxy.get_clipboard_history_menu().ok());
 
-        let history = match proxy.get_clipboard_history_menu() {
-            Ok(h) => h,
-            Err(_) => return RVec::new(),
-        };
-
-        let matcher = SkimMatcherV2::default();
-
-        // Thêm type annotation rõ ràng để sửa lỗi E0282
-        let mut results: Vec<(i64, String)> = history
-            .into_iter()
-            .filter(|item| !item.trim().is_empty())
-            .filter_map(|item: String| {
-                let clean_item = item.replace('&', "");
-                if query.is_empty() {
-                    Some((0, clean_item))
-                } else {
-                    matcher
-                        .fuzzy_match(&clean_item, query)
-                        .map(|score| (score, clean_item))
-                }
-            })
-            .collect();
-
-        if !query.is_empty() {
-            results.sort_by(|a, b| b.0.cmp(&a.0));
+        if let Some(data) = new_data {
+            *cache = (Instant::now(), data);
         }
-
-        results
-            .into_iter()
-            .take(state.config.max_entries)
-            .map(|(_score, text): (i64, String)| Match {
-                title: text.clone().into(),
-                description: ROption::RSome("Copy to clipboard".into()),
-                use_pango: false,
-                icon: ROption::RSome("edit-copy".into()),
-                id: ROption::RNone,
-            })
-            .collect::<Vec<Match>>()
-            .into()
-    } else {
-        RVec::new()
     }
+    let history = cache.1.clone();
+
+    let mut results: Vec<(i64, String)> = history
+        .into_iter()
+        .filter_map(|item| {
+            if item.trim().is_empty() {
+                return None;
+            }
+
+            let clean_item = if item.contains('&') {
+                item.replace('&', "")
+            } else {
+                item
+            };
+
+            if query.is_empty() {
+                Some((0, clean_item))
+            } else {
+                state
+                    .matcher
+                    .fuzzy_match(&clean_item, query)
+                    .map(|score| (score, clean_item))
+            }
+        })
+        .collect();
+
+    if !query.is_empty() {
+        results.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+    }
+
+    results
+        .into_iter()
+        .take(state.config.max_entries)
+        .map(|(_, text)| Match {
+            title: text.into(),
+            description: ROption::RSome("Copy to clipboard".into()),
+            use_pango: false,
+            icon: ROption::RSome("edit-copy".into()),
+            id: ROption::RNone,
+        })
+        .collect::<Vec<_>>()
+        .into()
 }
 
 #[handler]
-fn handler(selection: Match, state: &State) -> HandleResult {
+fn handler(selection: Match, _state: &State) -> HandleResult {
     let result = selection.title;
 
     if let Err(why) = std::process::Command::new("wl-copy")

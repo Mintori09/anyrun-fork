@@ -56,3 +56,18 @@ pub fn set_clipboard(content: String) -> Result<(), arboard::Error> {
     let mut clipboard = Clipboard::new()?;
     clipboard.set_text(content)
 }
+
+pub fn logger(msg: &str) {
+    use std::io::Write;
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    let log_path = std::path::PathBuf::from(home).join(".config/anyrun/anyrun.log");
+
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)
+    {
+        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+        let _ = writeln!(file, "[{}] {}", timestamp, msg);
+    }
+}
