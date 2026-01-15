@@ -393,7 +393,6 @@ impl Component for App {
                 }
             }
             AppMsg::Action(action) => {
-                // simple_log(&format!("--- Triggered Action: {:?} ---", action));
                 match action {
                     Action::Close => {
                         if let Some(invocation) = self.invocation.clone() {
@@ -455,17 +454,6 @@ impl Component for App {
                     }
                 }
             }
-
-            // AppMsg::KeyPressed { key, modifier } => {
-            //     if let Some(kb) = self.config.keybinds.iter().find(|k| {
-            //         k.key == key
-            //             && k.ctrl == modifier.contains(gdk::ModifierType::CONTROL_MASK)
-            //             && k.alt == modifier.contains(gdk::ModifierType::ALT_MASK)
-            //             && k.shift == modifier.contains(gdk::ModifierType::SHIFT_MASK)
-            //     }) {
-            //         sender.input(AppMsg::Action(kb.action));
-            //     }
-            // }
             AppMsg::EntryChanged(text) => {
                 if let Some(cancellable) = self.search_cancellable.take() {
                     cancellable.cancel();
@@ -477,7 +465,7 @@ impl Component for App {
                 let tx = self.tx.clone();
 
                 glib::MainContext::default().spawn_local(async move {
-                    glib::timeout_future(std::time::Duration::from_millis(100)).await;
+                    glib::timeout_future(std::time::Duration::from_millis(150)).await;
 
                     if !cancellable.is_cancelled() {
                         let _ = tx.try_send(ipc::Request::Query { text });
