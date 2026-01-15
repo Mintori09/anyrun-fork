@@ -1,20 +1,20 @@
-use std::{
-    cell::RefCell,
-    io::{self, IsTerminal, Read, Write},
-    rc::Rc,
-};
-
 use clap::{Parser, Subcommand};
 use gtk4::{self as gtk, gio, glib, prelude::*};
 use relm4::Sender;
 use serde::{Deserialize, Serialize};
+use std::{
+    cell::RefCell,
+    io::{self, IsTerminal, Read, Write},
+    rc::Rc,
+    sync::Arc,
+};
 
 mod app;
 mod config;
 mod plugin_box;
 mod provider;
-
 use crate::config::ConfigArgs;
+use gio::prelude::DBusMethodCall;
 
 const INTERFACE_XML: &str = r#"
 <node>
@@ -42,8 +42,8 @@ enum InterfaceMethod {
 
 impl DBusMethodCall for InterfaceMethod {
     fn parse_call(
-        _obj_path: &str,
-        _interface: Option<&str>,
+        _obj: &str,
+        _intf: Option<&str>,
         method: &str,
         params: glib::Variant,
     ) -> Result<Self, glib::Error> {
@@ -56,7 +56,7 @@ impl DBusMethodCall for InterfaceMethod {
             "Quit" => Ok(Self::Quit),
             _ => Err(glib::Error::new(
                 gio::DBusError::UnknownMethod,
-                "No such method",
+                "Unknown method",
             )),
         }
     }
@@ -90,12 +90,11 @@ fn main() {
     if let Some(cmd) = args.command {
         match cmd {
             Command::Close | Command::Quit => {
-                let method = if matches!(cmd, Command::Close) {
+                fast_ipc_call(if matches!(cmd, Command::Close) {
                     "Close"
                 } else {
                     "Quit"
-                };
-                fast_ipc_call(method);
+                });
                 return;
             }
             Command::Daemon => {
@@ -104,78 +103,62 @@ fn main() {
             }
         }
     }
-
     run_client(args);
 }
 
-fn fast_ipc_call(method: &str) {
-    let conn = gio::bus_get_sync(gio::BusType::Session, Option::<&gio::Cancellable>::None)
-        .expect("Failed to connect to DBus session bus");
-
-    conn.call(
-        Some("org.anyrun.anyrun"),
-        "/org/anyrun/anyrun",
-        "org.anyrun.Anyrun",
-        method,
-        None,
-        None,
-        gio::DBusCallFlags::NONE,
-        -1,
-        Option::<&gio::Cancellable>::None,
-        |_| {},
+fn fast_ipc_call(method: &'static str) {
+    gio::bus_get(
+        gio::BusType::Session,
+        None::<&gio::Cancellable>,
+        move |res| {
+            if let Ok(conn) = res {
+                conn.call(
+                    Some("org.anyrun.anyrun"),
+                    "/org/anyrun/anyrun",
+                    "org.anyrun.Anyrun",
+                    method,
+                    None,
+                    None,
+                    gio::DBusCallFlags::NO_AUTO_START,
+                    1_000,
+                    None::<&gio::Cancellable>,
+                    |_| {},
+                );
+            }
+        },
     );
-
-    let context = glib::MainContext::default();
-    while context.pending() {
-        context.iteration(false);
-    }
 }
 
 fn run_client(args: Args) {
     let app = gtk::Application::new(Some("org.anyrun.anyrun"), gio::ApplicationFlags::FLAGS_NONE);
-
-    if let Err(e) = app.register(Option::<&gio::Cancellable>::None) {
-        eprintln!("Failed to register application: {e}");
+    if let Err(e) = app.register(None::<&gio::Cancellable>) {
+        eprintln!("Registration error: {e}");
         return;
     }
 
-    if app.is_remote() {
-        let conn = app
-            .dbus_connection()
-            .expect("Failed to get DBus connection");
-
-        // Đọc stdin và env một cách tối ưu
+    let read_init_data = || {
         let mut stdin = Vec::new();
         if !io::stdin().is_terminal() {
-            let mut handle = io::stdin().lock();
-            let _ = handle.read_to_end(&mut stdin);
+            io::stdin()
+                .lock()
+                .take(2 * 1024 * 1024)
+                .read_to_end(&mut stdin)
+                .ok();
         }
         let env: Vec<(String, String)> = std::env::vars().collect();
+        app::AppInit { args, stdin, env }
+    };
 
-        // 1. Serialize dữ liệu
-        let init_payload = app::AppInit { args, stdin, env };
-        let serialized_data = serde_json::to_vec(&init_payload).expect("Failed to serialize");
+    if app.is_remote() {
+        let conn = app.dbus_connection().expect("No D-Bus connection");
+        let payload = read_init_data();
 
-        // 2. CHỖ SỬA LỖI: Tạo glib::Bytes bằng cách move dữ liệu (zero-copy)
-        let bytes = glib::Bytes::from_owned(serialized_data);
-
-        // 3. Tạo Variant từ Bytes (Cần truyền tham chiếu &bytes)
+        let serialized = serde_json::to_vec(&payload).unwrap();
+        let bytes = glib::Bytes::from_owned(serialized);
         let msg = glib::Variant::from_bytes::<(Vec<u8>,)>(&bytes);
 
         let main_loop = glib::MainLoop::new(None, false);
-        let main_loop_clone = main_loop.clone();
-
-        glib::timeout_add_local(
-            std::time::Duration::from_secs(5),
-            glib::clone!(
-                #[strong]
-                main_loop_clone,
-                move || {
-                    main_loop_clone.quit();
-                    glib::ControlFlow::Break
-                }
-            ),
-        );
+        let loop_clone = main_loop.clone();
 
         conn.call(
             Some("org.anyrun.anyrun"),
@@ -186,57 +169,45 @@ fn run_client(args: Args) {
             None,
             gio::DBusCallFlags::NONE,
             -1,
-            Option::<&gio::Cancellable>::None,
-            move |result| {
-                if let Ok(res) = result {
-                    if let Some(bytes_res) = res.child_value(0).get::<Vec<u8>>() {
-                        if let Ok(app::PostRunAction::Stdout(stdout_data)) =
-                            serde_json::from_slice::<app::PostRunAction>(&bytes_res)
+            None::<&gio::Cancellable>,
+            move |res| {
+                if let Ok(val) = res {
+                    if let Some(b) = val.child_value(0).get::<Vec<u8>>() {
+                        if let Ok(app::PostRunAction::Stdout(out_data)) =
+                            serde_json::from_slice::<app::PostRunAction>(&b)
                         {
                             let mut out = io::stdout().lock();
-                            let _ = out.write_all(&stdout_data);
+                            let _ = out.write_all(&out_data);
                             let _ = out.flush();
                         }
                     }
                 }
-                main_loop_clone.quit();
+                loop_clone.quit();
             },
         );
-
         main_loop.run();
     } else {
-        // Luồng chạy Daemon
-        let mut stdin = Vec::new();
-        if !io::stdin().is_terminal() {
-            let _ = io::stdin().read_to_end(&mut stdin);
-        }
-        let env: Vec<(String, String)> = std::env::vars().collect();
+        let shared_init = Arc::new(read_init_data());
 
         app.connect_activate(move |app| {
-            app::App::launch(
-                app,
-                app::AppInit {
-                    args: args.clone(),
-                    stdin: stdin.clone(),
-                    env: env.clone(),
-                },
-                None,
-            );
+            app::App::launch(app, (*shared_init).clone(), None);
         });
-
         app.run_with_args(&Vec::<String>::new());
     }
 }
 
 fn run_daemon(_args: Args) {
     let app = gtk::Application::new(Some("org.anyrun.anyrun"), gio::ApplicationFlags::IS_SERVICE);
-    app.register(Option::<&gio::Cancellable>::None).unwrap();
+    app.register(None::<&gio::Cancellable>)
+        .expect("Failed to register daemon");
 
     let _hold = app.hold();
     let state = Rc::new(RefCell::new(DaemonState { sender: None }));
-    let dbus_conn = app.dbus_connection().unwrap();
+    let dbus_conn = app
+        .dbus_connection()
+        .expect("Failed to get DBus connection");
 
-    let node_info = gio::DBusNodeInfo::for_xml(INTERFACE_XML).unwrap();
+    let node_info = gio::DBusNodeInfo::for_xml(INTERFACE_XML).expect("Invalid XML");
     let interface = node_info.lookup_interface("org.anyrun.Anyrun").unwrap();
 
     dbus_conn
@@ -247,13 +218,17 @@ fn run_daemon(_args: Args) {
             app,
             #[strong]
             state,
-            move |_conn, _sender, method, invocation| {
+            move |_, _, method, invocation| {
                 match method {
-                    InterfaceMethod::Show(show) => {
-                        let init_data = serde_json::from_slice(&show.args).unwrap();
-                        state.borrow_mut().sender =
-                            Some(app::App::launch(&app, init_data, Some(invocation)));
-                    }
+                    InterfaceMethod::Show(show) => match serde_json::from_slice(&show.args) {
+                        Ok(init_data) => {
+                            state.borrow_mut().sender =
+                                Some(app::App::launch(&app, init_data, Some(invocation)));
+                        }
+                        Err(_) => {
+                            invocation.return_error(gio::DBusError::InvalidArgs, "Invalid JSON");
+                        }
+                    },
                     InterfaceMethod::Close => {
                         if let Some(s) = &state.borrow().sender {
                             s.emit(app::AppMsg::Action(config::Action::Close));
@@ -269,7 +244,7 @@ fn run_daemon(_args: Args) {
             }
         ))
         .build()
-        .unwrap();
+        .expect("Failed to register object");
 
     app.run_with_args(&Vec::<String>::new());
 }

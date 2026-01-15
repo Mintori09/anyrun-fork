@@ -42,7 +42,7 @@ pub enum AppMsg {
     PluginOutput(PluginBoxOutput),
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct AppInit {
     pub args: Args,
     pub stdin: Vec<u8>,
