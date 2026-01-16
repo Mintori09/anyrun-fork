@@ -1,5 +1,6 @@
 mod actions;
 mod category;
+mod helper;
 mod registry;
 mod validate;
 
@@ -60,7 +61,8 @@ fn init(config_dir: RString) -> State {
             max_entries: 5,
         });
 
-    let actions: Vec<UniversalAction> = config
+    let mut actions = get_internal_actions();
+    let config_actions: Vec<UniversalAction> = config
         .actions
         .iter()
         .map(|a| UniversalAction {
@@ -70,8 +72,9 @@ fn init(config_dir: RString) -> State {
             category: a.data_type,
             validator: None,
         })
-        .chain(get_internal_actions())
         .collect();
+
+    actions.extend(config_actions);
 
     State {
         clipboard: get_clipboard(),
