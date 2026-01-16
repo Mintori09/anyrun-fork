@@ -1,4 +1,7 @@
+mod actions;
 mod category;
+mod registry;
+mod validate;
 
 use abi_stable::std_types::ROption::{RNone, RSome};
 use abi_stable::std_types::{RString, RVec};
@@ -9,9 +12,10 @@ use fuzzy_matcher::skim::SkimMatcherV2;
 use serde::Deserialize;
 use std::fs::{self};
 use std::path::PathBuf;
-use std::process::Command;
 
+use crate::actions::UniversalAction;
 use crate::category::InputCategory;
+use crate::registry::get_internal_actions;
 
 #[derive(Deserialize, Debug)]
 struct Action {
@@ -20,14 +24,7 @@ struct Action {
     data_type: InputCategory,
 }
 
-#[derive(Deserialize, Debug)]
-struct OptimizedAction {
-    original_name: String,
-    lowercase_name: String,
-    command: String,
-    data_type: InputCategory,
-}
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 struct Config {
     #[serde(default = "default_prefix")]
     prefix: String,
@@ -45,7 +42,7 @@ fn default_max_entries() -> usize {
 
 pub struct State {
     config: Config,
-    optimized_actions: Vec<OptimizedAction>,
+    actions: Vec<UniversalAction>,
     matcher: SkimMatcherV2,
     clipboard: String,
 }
@@ -63,21 +60,23 @@ fn init(config_dir: RString) -> State {
             max_entries: 5,
         });
 
-    let optimized_actions = config
+    let actions: Vec<UniversalAction> = config
         .actions
         .iter()
-        .map(|a| OptimizedAction {
-            original_name: a.name.clone(),
-            lowercase_name: a.name.to_lowercase(),
-            command: a.command.clone(),
-            data_type: a.data_type,
+        .map(|a| UniversalAction {
+            name: a.name.clone(),
+            name_lowercase: a.name.to_lowercase(),
+            target: actions::ActionTarget::Shell(a.command.clone()),
+            category: a.data_type,
+            validator: None,
         })
+        .chain(get_internal_actions())
         .collect();
 
     State {
         clipboard: get_clipboard(),
         config,
-        optimized_actions,
+        actions,
         matcher: SkimMatcherV2::default(),
     }
 }
@@ -111,17 +110,17 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
         state.config.max_entries
     };
 
-    let mut scores: Vec<(i64, &OptimizedAction)> = state
-        .optimized_actions
+    let mut scores: Vec<(i64, &UniversalAction)> = state
+        .actions
         .iter()
-        .filter(|a| a.data_type == clip_type || a.data_type == InputCategory::All)
+        .filter(|a| a.is_match(&state.clipboard, clip_type) || a.category == InputCategory::All)
         .filter_map(|action| {
             if is_empty_query {
                 Some((0, action))
             } else {
                 state
                     .matcher
-                    .fuzzy_match(&action.lowercase_name, query_trimmed)
+                    .fuzzy_match(&action.name_lowercase, query_trimmed)
                     .map(|score| (score, action))
             }
         })
@@ -135,7 +134,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
         .into_iter()
         .take(limit)
         .map(|(_, action)| Match {
-            title: action.original_name.clone().into(),
+            title: action.name.clone().into(),
             description: common_desc.clone(),
             icon: common_icon.clone(),
             id: RNone,
@@ -146,16 +145,12 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
 
 #[handler]
 fn handler(selection: Match, state: &State) -> HandleResult {
-    let name = selection.title.to_string();
-
     if let Some(action) = state
-        .optimized_actions
+        .actions
         .iter()
-        .find(|a| a.original_name == name)
+        .find(|a| a.name == selection.title.to_string())
     {
-        let cmd_script = action.command.replace("{clip}", &state.clipboard);
-
-        let _ = Command::new("sh").arg("-c").arg(cmd_script).spawn();
+        action.target.run_action(&state.clipboard);
     }
 
     HandleResult::Close

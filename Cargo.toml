@@ -4,7 +4,6 @@ members = [
   "anyrun-plugin",
   "anyrun-macros",
   "plugins/symbols",
-  "plugins/rink",
   "plugins/kidex",
   "plugins/translate",
   "plugins/randr",

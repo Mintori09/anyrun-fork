@@ -30,7 +30,6 @@ impl InputCategory {
         if trimmed.parse::<IpAddr>().is_ok() {
             return Self::IpAddress;
         }
-
         if RE_EMAIL.is_match(trimmed) {
             return Self::Email;
         }
@@ -46,10 +45,7 @@ impl InputCategory {
             return Self::Json;
         }
 
-        let code_keywords = [
-            "fn ", "public ", "import ", "let ", "const ", "def ", "class ", "function", "func",
-        ];
-
+        let code_keywords = ["fn ", "let ", "pub ", "import ", "const ", "class "];
         if code_keywords.iter().any(|&k| trimmed.contains(k)) {
             return Self::Code;
         }
@@ -58,17 +54,27 @@ impl InputCategory {
     }
 
     pub fn get_icon(&self) -> String {
-        let icon = match self {
+        match self {
             Self::Json => SystemIcon::Json,
             Self::Code => SystemIcon::FileCode,
             Self::Url => SystemIcon::Url,
             Self::IpAddress => SystemIcon::NetworkStatus,
             Self::Email => SystemIcon::MailSend,
-            Self::Plaintext => SystemIcon::FileText,
-            Self::All => SystemIcon::FileText,
-            Self::Unknown => SystemIcon::SystemRun,
-        };
+            _ => SystemIcon::FileText,
+        }
+        .as_str()
+        .to_string()
+    }
 
-        icon.as_str().to_string()
+    pub fn get_extension(&self) -> String {
+        match self {
+            Self::Json => "json",
+            Self::Code => "md",
+            Self::Url => "url",
+            Self::IpAddress => "md",
+            Self::Email => "md",
+            _ => "txt",
+        }
+        .to_string()
     }
 }
