@@ -65,16 +65,4 @@ impl InputCategory {
         .as_str()
         .to_string()
     }
-
-    pub fn get_extension(&self) -> String {
-        match self {
-            Self::Json => "json",
-            Self::Code => "md",
-            Self::Url => "url",
-            Self::IpAddress => "md",
-            Self::Email => "md",
-            _ => "txt",
-        }
-        .to_string()
-    }
 }
