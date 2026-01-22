@@ -10,21 +10,30 @@ pub fn get_internal_actions() -> Vec<UniversalAction> {
         UniversalAction {
             name: "Download Youtube Video".into(),
             name_lowercase: "download video youtube".into(),
-            category: InputCategory::Url,
+            category: InputCategory::System { kind: "url".into() },
             target: ActionTarget::Shell("kitty -- zsh -c \"yt-dlp '{clip}'\"".into()),
             validator: Some(is_youtube),
         },
         UniversalAction {
             name: "Save to Desktop".into(),
             name_lowercase: "save to desktop".into(),
-            category: InputCategory::All,
+            category: InputCategory::PlainText,
+            target: ActionTarget::Internal(detect_and_save),
+            validator: None,
+        },
+        UniversalAction {
+            name: "Save to Desktop".into(),
+            name_lowercase: "save to desktop".into(),
+            category: InputCategory::Code { lang: "all".into() },
             target: ActionTarget::Internal(detect_and_save),
             validator: None,
         },
         UniversalAction {
             name: "Open path with neovim".into(),
             name_lowercase: "open path with neovim".into(),
-            category: InputCategory::All,
+            category: InputCategory::System {
+                kind: "path".into(),
+            },
             target: ActionTarget::Shell(
                 "kitty -- zsh -c \"nvim $(wl-paste | tr -d '\\n')\"".into(),
             ),

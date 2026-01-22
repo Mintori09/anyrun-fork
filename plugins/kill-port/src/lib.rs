@@ -99,20 +99,6 @@ pub fn get_active_ports() -> Vec<ActivePort> {
     active_ports
 }
 
-/// Parses the "users:(("name",pid=123,fd=4))" string from ss output
-fn parse_ss_process(raw: &str) -> (String, String) {
-    // Basic extraction logic without regex for speed
-    let name = raw.split('"').nth(1).unwrap_or("unknown").to_string();
-    let pid = raw
-        .split("pid=")
-        .nth(1)
-        .and_then(|s| s.split(',').next())
-        .unwrap_or("unknown")
-        .to_string();
-
-    (name, pid)
-}
-
 #[init]
 fn init(config_dir: RString) -> State {
     let config_path = PathBuf::from(config_dir.to_string()).join("port_killer.ron");
