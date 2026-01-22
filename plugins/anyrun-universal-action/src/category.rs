@@ -1,68 +1,152 @@
 use anyrun_helper::icon::SystemIcon;
-use once_cell::sync::Lazy;
-use regex::Regex;
+use arboard::Clipboard;
 use serde::{Deserialize, Serialize};
-use std::net::IpAddr;
-use url::Url;
 
-static RE_EMAIL: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").unwrap());
+use crate::helper::detect_and_save::call_magika;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Copy)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+// #[serde(rename_all = "lowercase")]
 pub enum InputCategory {
-    Json,
-    Code,
-    Url,
-    IpAddress,
-    Email,
-    Plaintext,
-    All,
-    #[serde(other)]
-    Unknown,
+    Code {
+        lang: String,
+    },
+    System {
+        kind: String,
+    },
+    Design {
+        kind: String,
+    },
+    #[serde(alias = "PlainText", alias = "Plaintext")]
+    PlainText,
+    Image,
 }
 
 impl InputCategory {
-    pub fn detect(input: &str) -> Self {
-        let trimmed = input.trim();
-        if trimmed.is_empty() {
-            return Self::Plaintext;
+    pub fn classify_clipboard() -> InputCategory {
+        let mut ctx = Clipboard::new().unwrap();
+
+        if ctx.get_image().is_ok() {
+            return InputCategory::Image;
         }
 
-        if trimmed.parse::<IpAddr>().is_ok() {
-            return Self::IpAddress;
-        }
-        if RE_EMAIL.is_match(trimmed) {
-            return Self::Email;
+        let text = match ctx.get_text() {
+            Ok(t) => t,
+            Err(_) => return InputCategory::PlainText,
+        };
+        let trimmed = text.trim();
+
+        // 1. Check Color Hex
+        let color_re = regex::Regex::new(r"^#(?:[0-9a-fA-F]{3}){1,2}$").unwrap();
+        if color_re.is_match(trimmed) {
+            return InputCategory::Design {
+                kind: "hex_color".into(),
+            };
         }
 
-        if Url::parse(trimmed).is_ok_and(|url| url.scheme() == "http" || url.scheme() == "https") {
-            return Self::Url;
+        // 2. Check URL
+        if (trimmed.starts_with("http") && trimmed.contains("://")) || trimmed.starts_with("www.") {
+            return InputCategory::System { kind: "url".into() };
         }
 
-        if ((trimmed.starts_with('{') && trimmed.ends_with('}'))
-            || (trimmed.starts_with('[') && trimmed.ends_with(']')))
-            && serde_json::from_str::<serde_json::Value>(trimmed).is_ok()
+        // 3. Check Path
+        if (trimmed.contains('/') || trimmed.contains('\\'))
+            && std::path::Path::new(trimmed).exists()
         {
-            return Self::Json;
+            return InputCategory::System {
+                kind: "path".into(),
+            };
         }
 
-        let code_keywords = ["fn ", "let ", "pub ", "import ", "const ", "class "];
-        if code_keywords.iter().any(|&k| trimmed.contains(k)) {
-            return Self::Code;
+        // 4. Check JSON (Merged into Code)
+        if serde_json::from_str::<serde_json::Value>(trimmed).is_ok() {
+            return InputCategory::Code {
+                lang: "json".into(),
+            };
         }
 
-        Self::Plaintext
+        // 5. Check via Magika (Merged Data types into Code)
+        if let Some((group, label, score)) = call_magika(trimmed) {
+            if score > 0.45 {
+                match group.as_str() {
+                    "code" => return InputCategory::Code { lang: label },
+                    // Treat structured data as code
+                    "text" if label == "xml" || label == "yaml" || label == "toml" => {
+                        return InputCategory::Code { lang: label };
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // 6. Manual Heuristics
+        if trimmed.contains('$') && trimmed.contains("foreach") && trimmed.contains(';') {
+            return InputCategory::Code { lang: "php".into() };
+        }
+
+        // if trimmed.contains("Config(") || (trimmed.contains("(") && trimmed.contains(':')) {
+        //     return InputCategory::Code { lang: "ron".into() };
+        // }
+
+        InputCategory::PlainText
     }
 
-    pub fn get_icon(&self) -> String {
+    pub fn get_extension(&self) -> String {
         match self {
-            Self::Json => SystemIcon::Json,
-            Self::Code => SystemIcon::FileCode,
-            Self::Url => SystemIcon::Url,
-            Self::IpAddress => SystemIcon::NetworkStatus,
-            Self::Email => SystemIcon::MailSend,
+            Self::Code { lang, .. } => match lang.to_lowercase().as_str() {
+                "rust" => ".rs".to_string(),
+                "python" => ".py".to_string(),
+                "javascript" => ".js".to_string(),
+                "typescript" => ".ts".to_string(),
+                "c++" | "cpp" => ".cpp".to_string(),
+                "json" => ".json".into(),
+                "xml" => ".xml".into(),
+                "yaml" => ".yaml".into(),
+                "ron" => ".ron".into(),
+                _ => format!(".{}", lang),
+            },
+            Self::System { kind } => match kind.as_str() {
+                "path" => ".path".into(),
+                "url" => ".url".into(),
+                _ => ".md".into(),
+            },
+            Self::Design { kind } if kind == "hex_color" => ".color".into(),
+            Self::Image => ".png".into(),
+            Self::PlainText => ".md".into(),
+            _ => "".into(),
+        }
+    }
+
+    pub fn get_icon(&self) -> SystemIcon {
+        match self {
+            Self::Code { lang, .. } => {
+                match lang.to_lowercase().as_str() {
+                    "rust" | "rs" => SystemIcon::Rust,
+                    "javascript" | "js" => SystemIcon::JavaScript,
+                    "typescript" | "ts" => SystemIcon::TypeScript,
+                    "python" | "py" => SystemIcon::Python,
+                    "php" => SystemIcon::PHP,
+                    "lua" => SystemIcon::Lua,
+                    "sh" | "shell" | "bash" | "zsh" => SystemIcon::Shell,
+                    "nix" => SystemIcon::Nix,
+                    "json" => SystemIcon::Json,
+                    "yaml" | "yml" => SystemIcon::Yaml,
+                    "toml" => SystemIcon::Toml,
+                    "html" => SystemIcon::Html,
+                    "css" => SystemIcon::Css,
+                    "ron" | "config" => SystemIcon::Config,
+                    _ => SystemIcon::FileCode, // Default for other code types
+                }
+            }
+            Self::System { kind } => match kind.to_lowercase().as_str() {
+                "url" => SystemIcon::Url,
+                "path" => SystemIcon::Folder,
+                "ip" => SystemIcon::NetworkStatus,
+                _ => SystemIcon::SystemRun,
+            },
+            Self::Design { .. } => SystemIcon::Display,
+            Self::Image => SystemIcon::FileImage,
+            Self::PlainText => SystemIcon::FileText,
             _ => SystemIcon::FileText,
         }
-        .as_str()
-        .to_string()
     }
 }
