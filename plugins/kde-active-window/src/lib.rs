@@ -21,7 +21,7 @@ struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            prefix: "focus ".into(),
+            prefix: "fo ".into(),
             max_entries: 10,
             cache_ttl_secs: 2,
         }
@@ -57,7 +57,7 @@ fn get_kde_windows() -> Vec<KdeWindow> {
             continue;
         }
 
-        // Lấy Class Name
+        // get Class Name
         let class_out = Command::new("kdotool")
             .arg("getwindowclassname")
             .arg(id)
@@ -78,7 +78,7 @@ fn get_kde_windows() -> Vec<KdeWindow> {
 
 #[init]
 fn init(config_dir: RString) -> State {
-    let config_path = PathBuf::from(config_dir.to_string()).join("window_switcher.ron");
+    let config_path = PathBuf::from(config_dir.to_string()).join("kde_window_switcher.ron");
 
     let config: Config = fs::read_to_string(config_path)
         .ok()
@@ -120,6 +120,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
     let input_str = input.to_string();
 
     if let Some(query) = input_str.strip_prefix(&state.config.prefix) {
+        let query = query.trim_start();
         let windows = get_windows_with_cache(state);
 
         let mut scored_matches: Vec<(i64, KdeWindow)> = windows
@@ -141,9 +142,9 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
             .take(state.config.max_entries)
             .map(|(_, win)| Match {
                 title: win.class.clone().into(),
-                description: ROption::RSome(win.id.clone().into()), // Hiện class ở dòng dưới
-                id: ROption::RNone,                                 // Lưu ID vào metadata
-                icon: ROption::RSome(win.class.into()),             // Thử lấy icon theo classname
+                description: ROption::RSome(win.id.clone().into()),
+                id: ROption::RNone,
+                icon: ROption::RSome(win.class.into()),
                 use_pango: false,
             })
             .collect::<Vec<_>>()

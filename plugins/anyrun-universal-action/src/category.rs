@@ -1,6 +1,8 @@
-use anyrun_helper::icon::SystemIcon;
+use anyrun_helper::icon::{SystemIcon, home_dir};
 use arboard::Clipboard;
 use serde::{Deserialize, Serialize};
+use std::env;
+use std::path::PathBuf;
 
 use crate::helper::detect_and_save::call_magika;
 
@@ -49,8 +51,9 @@ impl InputCategory {
         }
 
         // 3. Check Path
-        if (trimmed.contains('/') || trimmed.contains('\\'))
-            && std::path::Path::new(trimmed).exists()
+        let expanded_path = Self::expand_path(trimmed);
+        if (trimmed.contains('/') || trimmed.contains('\\') || trimmed.starts_with('~'))
+            && expanded_path.exists()
         {
             return InputCategory::System {
                 kind: "path".into(),
@@ -65,16 +68,16 @@ impl InputCategory {
         }
 
         // 5. Check via Magika (Merged Data types into Code)
-        if let Some((group, label, score)) = call_magika(trimmed) {
-            if score > 0.45 {
-                match group.as_str() {
-                    "code" => return InputCategory::Code { lang: label },
-                    // Treat structured data as code
-                    "text" if label == "xml" || label == "yaml" || label == "toml" => {
-                        return InputCategory::Code { lang: label };
-                    }
-                    _ => {}
+        if let Some((group, label, score)) = call_magika(trimmed)
+            && score > 0.45
+        {
+            match group.as_str() {
+                "code" => return InputCategory::Code { lang: label },
+                // Treat structured data as code
+                "text" if label == "xml" || label == "yaml" || label == "toml" => {
+                    return InputCategory::Code { lang: label };
                 }
+                _ => {}
             }
         }
 
@@ -145,8 +148,23 @@ impl InputCategory {
             },
             Self::Design { .. } => SystemIcon::Display,
             Self::Image => SystemIcon::FileImage,
-            Self::PlainText => SystemIcon::FileText,
             _ => SystemIcon::FileText,
         }
+    }
+    pub fn expand_path(input: &str) -> PathBuf {
+        if input.starts_with('~')
+            && let Some(home_dir) = home_dir()
+        {
+            return home_dir.join(input.trim_start_matches("~/"));
+        }
+
+        if input.starts_with("$HOME")
+            && let Ok(home_env) = env::var("HOME")
+        {
+            let rest = input.trim_start_matches("$HOME").trim_start_matches('/');
+            return PathBuf::from(home_env).join(rest);
+        }
+
+        PathBuf::from(input)
     }
 }
