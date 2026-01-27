@@ -28,16 +28,5 @@ pub fn get_internal_actions() -> Vec<UniversalAction> {
             target: ActionTarget::Internal(detect_and_save),
             validator: None,
         },
-        UniversalAction {
-            name: "Open path with neovim".into(),
-            name_lowercase: "open path with neovim".into(),
-            category: InputCategory::System {
-                kind: "path".into(),
-            },
-            target: ActionTarget::Shell(
-                "kitty -- zsh -c \"nvim $(wl-paste | tr -d '\\n')\"".into(),
-            ),
-            validator: None,
-        },
     ]
 }

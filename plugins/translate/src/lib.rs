@@ -2,7 +2,6 @@ use std::fs;
 
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::*;
-use fuzzy_matcher::FuzzyMatcher;
 use reqwest::Client;
 use serde::Deserialize;
 use tokio::runtime::Runtime;
@@ -11,7 +10,6 @@ use tokio::runtime::Runtime;
 struct Config {
     prefix: String,
     language_delimiter: String,
-    max_entries: usize,
 }
 
 impl Default for Config {
@@ -19,7 +17,6 @@ impl Default for Config {
         Self {
             prefix: ":".to_string(),
             language_delimiter: ">".to_string(),
-            max_entries: 3,
         }
     }
 }
@@ -164,7 +161,6 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
         return RVec::new();
     }
 
-    // Ignore the prefix
     let input = &input[state.config.prefix.len()..];
     let (lang_split, text) = match input.split_once(' ') {
         Some(split) => split,
@@ -180,61 +176,46 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
         return RVec::new();
     }
 
-    let matcher = fuzzy_matcher::skim::SkimMatcherV2::default().ignore_case();
+let dest_lower = dest.to_lowercase();
+let src_lower = src.as_ref().map(|s| s.to_lowercase());
 
-    let dest_matches = state
-        .langs
-        .clone()
-        .into_iter()
-        .filter_map(|(code, name)| {
-            matcher
-                .fuzzy_match(code, dest)
-                .max(matcher.fuzzy_match(name, dest))
-                .map(|score| (code, name, score))
-        })
-        .collect::<Vec<_>>();
+let dest_matches = state
+    .langs
+    .iter() // Iterate by reference to avoid unnecessary cloning
+    .filter(|(code, name)| {
+        code.to_lowercase().starts_with(&dest_lower) || 
+        name.to_lowercase().starts_with(&dest_lower)
+    })
+    .collect::<Vec<_>>();
 
-    // Fuzzy match the input language with the languages in the Vec
-    let mut matches = match src {
-        Some(src) => {
-            let src_matches = state
-                .langs
-                .clone()
-                .into_iter()
-                .filter_map(|(code, name)| {
-                    matcher
-                        .fuzzy_match(code, src)
-                        .max(matcher.fuzzy_match(name, src))
-                        .map(|score| (code, name, score))
-                })
-                .collect::<Vec<_>>();
+let  matches = match src_lower {
+    Some(s_lower) => {
+        let src_matches = state
+            .langs
+            .iter()
+            .filter(|(code, name)| {
+                code.to_lowercase().starts_with(&s_lower) || 
+                name.to_lowercase().starts_with(&s_lower)
+            })
+            .collect::<Vec<_>>();
 
-            let mut matches = src_matches
-                .into_iter()
-                .flat_map(|src| {
-                    dest_matches
-                        .clone()
-                        .into_iter()
-                        .map(move |dest| (Some(src), dest))
-                })
-                .collect::<Vec<_>>();
+        src_matches
+            .into_iter()
+            .flat_map(|src_lang| {
+                dest_matches
+                    .iter()
+                    .map(move |&dest_lang| (Some(src_lang), dest_lang))
+            })
+            .collect::<Vec<_>>()
+    }
+    None => {
+        dest_matches
+            .into_iter()
+            .map(|dest_lang| (None, dest_lang))
+            .collect::<Vec<_>>()
+    }
+};
 
-            matches.sort_by(|a, b| (b.1 .2 + b.0.unwrap().2).cmp(&(a.1 .2 + a.0.unwrap().2)));
-            matches
-        }
-        None => {
-            let mut matches = dest_matches
-                .into_iter()
-                .map(|dest| (None, dest))
-                .collect::<Vec<_>>();
-
-            matches.sort_by(|a, b| b.1 .2.cmp(&a.1 .2));
-            matches
-        }
-    };
-
-    // We only want 3 matches
-    matches.truncate(state.config.max_entries);
 
     state.runtime.block_on(async move {
         // Create the futures for fetching the translation results
