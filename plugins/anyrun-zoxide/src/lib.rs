@@ -64,32 +64,17 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
 
     let query_parts: Vec<&str> = query_str.split_whitespace().collect();
 
-    let mut matches: Vec<(i64, &String)> = state
+    state
         .zoxide
         .iter()
-        .filter_map(|path| {
-            let mut total_score = 0;
-            for part in &query_parts {
-                if let Some(score) = state.matcher.fuzzy_match(path, part) {
-                    total_score += score;
-                } else {
-                    return None;
-                }
-            }
-            Some((total_score, path))
+        .filter(|path| {
+            // "Just find": Check if all query parts exist in the path
+            query_parts
+                .iter()
+                .all(|part| state.matcher.fuzzy_match(path, part).is_some())
         })
-        .collect();
-
-    matches.sort_by(|a, b| b.0.cmp(&a.0));
-    let limit = state.config.max_entries;
-    if matches.len() > limit {
-        matches.select_nth_unstable_by(limit, |a, b| b.0.cmp(&a.0));
-        matches.truncate(limit);
-    }
-
-    matches
-        .into_iter()
-        .map(|(_score, path)| Match {
+        .take(state.config.max_entries) // Stop looking once we hit the limit
+        .map(|path| Match {
             title: path.clone().into(),
             description: ROption::RSome("Zoxide directory".into()),
             use_pango: false,
