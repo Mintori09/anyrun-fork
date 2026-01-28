@@ -126,10 +126,10 @@ fn info() -> PluginInfo {
 fn get_ports_with_cache(state: &State) -> Vec<ActivePort> {
     let mut cache = state.cache.lock().unwrap();
 
-    if let Some((inst, ports)) = cache.as_ref() {
-        if inst.elapsed() < Duration::from_secs(state.config.cache_ttl_secs) {
-            return ports.clone();
-        }
+    if let Some((inst, ports)) = cache.as_ref()
+        && inst.elapsed() < Duration::from_secs(state.config.cache_ttl_secs)
+    {
+        return ports.clone();
     }
 
     let ports = get_active_ports();
