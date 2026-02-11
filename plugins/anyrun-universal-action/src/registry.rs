@@ -1,7 +1,7 @@
 use crate::{
     actions::{ActionTarget, UniversalAction},
     category::InputCategory,
-    helper::{detect_and_save::detect_and_save, path::get_full_path},
+    helper::{detect_and_save::detect_and_save, format::format_content, path::get_full_path},
     validate::{is_shorten_path, is_youtube},
 };
 
@@ -36,6 +36,13 @@ pub fn get_internal_actions() -> Vec<UniversalAction> {
             },
             target: ActionTarget::Internal(get_full_path),
             validator: Some(is_shorten_path),
+        },
+        UniversalAction {
+            name: "Format Code".into(),
+            name_lowercase: "format code".into(),
+            category: InputCategory::Code { lang: "all".into() },
+            target: ActionTarget::Internal(format_content),
+            validator: None,
         },
     ]
 }
