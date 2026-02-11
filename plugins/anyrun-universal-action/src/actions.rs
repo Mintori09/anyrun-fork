@@ -3,8 +3,8 @@ use std::process::Command;
 
 #[derive(Debug, Clone)]
 pub enum ActionTarget {
-    Shell(String),                     // Ví dụ: "yt-dlp {clip}"
-    Internal(fn(&str, InputCategory)), // Ví dụ: "save_to_db"
+    Shell(String),                     // Eg: "yt-dlp {clip}"
+    Internal(fn(&str, InputCategory)), // Eg: "save_to_db"
 }
 
 impl ActionTarget {
