@@ -46,11 +46,8 @@ pub struct SearchableEntry {
 
 pub struct State {
     config: Config,
-    // Truy xuất O(1) khi người dùng nhấn Enter
     entry_map: HashMap<u64, DesktopEntry>,
-    // Dữ liệu đã chuẩn hóa để search O(N) cực nhanh không tốn RAM
     search_entries: Vec<SearchableEntry>,
-    // Lưu sẵn terminal hợp lệ để dùng ngay
     cached_terminal: Option<Terminal>,
 }
 
@@ -131,7 +128,7 @@ pub fn init(config_dir: RString) -> State {
             name: name.to_string(),
             exec: exec.to_string(),
             icon: icon.to_string(),
-            localized_name: None, 
+            localized_name: None,
             desc: Some(format!("Execute {}", name)),
             term: false,
             keywords: vec!["system".to_string(), name.to_lowercase()],
@@ -209,15 +206,7 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
     let input_trimmed = input_lc.trim();
 
     if input_trimmed.is_empty() {
-        return state
-            .search_entries
-            .iter()
-            .take(state.config.max_entries)
-            .map(|se| {
-                let entry = &state.entry_map[&se.id];
-                make_match(entry, se.id, &state.config)
-            })
-            .collect();
+        return RVec::new();
     }
 
     let matcher = fuzzy_matcher::skim::SkimMatcherV2::default();

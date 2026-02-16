@@ -1,6 +1,5 @@
 use crate::{
-    actions::{ActionTarget, UniversalAction},
-    category::InputCategory,
+    action::model::{ActionTarget, InputCategory, UniversalAction},
     helper::{detect_and_save::detect_and_save, format::format_content, path::get_full_path},
     validate::{is_shorten_path, is_youtube},
 };

@@ -1,7 +1,7 @@
+use crate::action::model::InputCategory;
 use anyrun_helper::set_clipboard;
-
-use crate::category::InputCategory;
 use std::env;
+
 pub fn get_full_path(content: &str, _content_type: InputCategory) {
     let path_str = if content.starts_with('~') {
         content.replacen('~', &env::var("HOME").unwrap_or_default(), 1)
