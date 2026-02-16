@@ -1,27 +1,10 @@
 use anyrun_helper::icon::{SystemIcon, home_dir};
 use arboard::Clipboard;
-use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::PathBuf;
 
+use crate::action::model::InputCategory;
 use crate::helper::detect_and_save::call_magika;
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-// #[serde(rename_all = "lowercase")]
-pub enum InputCategory {
-    Code {
-        lang: String,
-    },
-    System {
-        kind: String,
-    },
-    Design {
-        kind: String,
-    },
-    #[serde(alias = "PlainText", alias = "Plaintext")]
-    PlainText,
-    Image,
-}
 
 impl InputCategory {
     pub fn classify_clipboard() -> InputCategory {

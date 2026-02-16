@@ -1,4 +1,4 @@
-use crate::category::InputCategory;
+use crate::action::model::InputCategory;
 use crate::helper::model::*;
 use dirs::home_dir;
 use std::fs;

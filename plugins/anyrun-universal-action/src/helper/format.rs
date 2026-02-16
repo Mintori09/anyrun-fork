@@ -1,6 +1,7 @@
-use crate::category::InputCategory;
 use anyrun_helper::set_clipboard;
 use std::{collections::HashMap, fs, process::Command};
+
+use crate::action::model::InputCategory;
 
 pub fn format_content(content: &str, filetype: InputCategory) {
     let extension = InputCategory::get_extension(&filetype);
