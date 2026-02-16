@@ -73,26 +73,31 @@ pub enum Error {
 
 pub struct Socket {
     pub inner: BufReader<UnixStream>,
+    recv_buf: String,
 }
 
 impl Socket {
     pub fn new(stream: UnixStream) -> Self {
         let inner = BufReader::new(stream);
 
-        Self { inner }
+        Self {
+            inner,
+            recv_buf: String::new(),
+        }
     }
 
     pub async fn send<T: Serialize>(&mut self, value: &T) -> io::Result<()> {
-        let mut buf = serde_json::to_string(value).map_err(io::Error::other)?;
-        buf.push('\n');
-        self.inner.get_mut().write_all(buf.as_bytes()).await?;
+        let mut buf = Vec::new();
+        serde_json::to_writer(&mut buf, value).map_err(io::Error::other)?;
+        buf.push(b'\n');
+        self.inner.get_mut().write_all(&buf).await?;
         Ok(())
     }
 
     pub async fn recv<T: DeserializeOwned>(&mut self) -> io::Result<T> {
-        let mut buf = String::new();
-        self.inner.read_line(&mut buf).await?;
+        self.recv_buf.clear();
+        self.inner.read_line(&mut self.recv_buf).await?;
 
-        serde_json::from_str::<T>(&buf).map_err(io::Error::other)
+        serde_json::from_str::<T>(&self.recv_buf).map_err(io::Error::other)
     }
 }

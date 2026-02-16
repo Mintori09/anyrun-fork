@@ -1,4 +1,4 @@
-use anyrun_interface::{Match, PluginInfo, PluginRef, abi_stable};
+use anyrun_interface::{HandleResult, Match, PluginInfo, PluginRef, abi_stable};
 use anyrun_provider_ipc::{CONFIG_DIRS, PLUGIN_PATHS, Request, Response, Socket};
 use clap::{Parser, Subcommand};
 use futures::stream::{FuturesUnordered, StreamExt};
@@ -82,17 +82,15 @@ async fn main() -> io::Result<()> {
     };
 
     for plugin_path in &args.plugins {
-        if let Some(path) = find_plugin(plugin_path, &plugin_dirs) {
-            if let Ok(header) = abi_stable::library::lib_header_from_path(&path) {
-                if let Ok(plugin) = header.init_root_module::<PluginRef>() {
+        if let Some(path) = find_plugin(plugin_path, &plugin_dirs)
+            && let Ok(header) = abi_stable::library::lib_header_from_path(&path)
+                && let Ok(plugin) = header.init_root_module::<PluginRef>() {
                     plugin.init()(state.config_dir.as_ref().into());
                     let info = plugin.info()();
                     let idx = state.plugins.len();
                     state.plugin_map.insert(info.name.to_string(), idx);
                     state.plugins.push(PluginState { plugin, info });
                 }
-            }
-        }
     }
 
     match args.command {
@@ -127,14 +125,13 @@ async fn worker(stream: UnixStream, state: &mut State) -> io::Result<WorkerResul
     loop {
         tokio::select! {
             Some(join_result) = pending_results.next() => {
-                if let Ok((matches, idx)) = join_result {
-                    if let Some(p_state) = state.plugins.get(idx) {
+                if let Ok((matches, idx)) = join_result
+                    && let Some(p_state) = state.plugins.get(idx) {
                         socket.send(&Response::Matches {
                             plugin: p_state.info.clone(),
                             matches,
                         }).await?;
                     }
-                }
             }
 
             req_result = socket.recv() => {
@@ -166,9 +163,13 @@ async fn worker(stream: UnixStream, state: &mut State) -> io::Result<WorkerResul
                         }
                     }
                     Request::Handle { plugin, selection } => {
-                        if let Some(&idx) = state.plugin_map.get(&plugin.name.to_string()) {
-                            let p = &state.plugins[idx];
-                            let result = p.plugin.handle_selection()(selection);
+                        if let Some(&idx) = state.plugin_map.get(plugin.name.as_str()) {
+                            let handle_fn = state.plugins[idx].plugin.handle_selection();
+                            let result = tokio::task::spawn_blocking(move || {
+                                handle_fn(selection)
+                            })
+                            .await
+                            .unwrap_or(HandleResult::Close);
                             socket.send(&Response::Handled { plugin, result }).await?;
                         }
                     }
