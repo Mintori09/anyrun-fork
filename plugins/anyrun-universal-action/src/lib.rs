@@ -129,6 +129,7 @@ fn filter_and_score_actions<'a>(
     query: &str,
     is_initial_view: bool,
 ) -> Vec<(i64, &'a UniversalAction)> {
+    let query = query.trim_end();
     state
         .actions
         .iter()
