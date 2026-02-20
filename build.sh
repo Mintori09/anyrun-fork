@@ -10,12 +10,12 @@ main() {
     cargo build --release
 
     echo "--- Preparing plugin directory ---"
-    # mkdir -p "$PLUGIN_DIR"
+    mkdir -p "$PLUGIN_DIR"
 
     echo "--- Installing plugins and binary ---"
-    cp target/release/*.so "$PLUGIN_DIR"
+    # cp target/release/*.so "$PLUGIN_DIR"
 
-    # sudo install -Dm755 ./target/release/anyrun "$BINARY_DEST"
+    sudo install -Dm755 ./target/release/anyrun "$BINARY_DEST"
 
     echo "Done! anyrun has been updated."
 }
