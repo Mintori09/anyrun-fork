@@ -417,7 +417,6 @@ impl Component for App {
                         // FIXME: Make sure the worker has actually correctly shut down before
                         // exiting
                         let _ = self.tx.blocking_send(ipc::Request::Quit);
-                        relm4::runtime_util::shutdown_all();
                     }
                     Action::Down | Action::Up => {
                         let len = self.combined_matches().len();

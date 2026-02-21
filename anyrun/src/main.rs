@@ -220,15 +220,23 @@ fn run_daemon(_args: Args) {
             state,
             move |_, _, method, invocation| {
                 match method {
-                    InterfaceMethod::Show(show) => match serde_json::from_slice(&show.args) {
-                        Ok(init_data) => {
-                            state.borrow_mut().sender =
-                                Some(app::App::launch(&app, init_data, Some(invocation)));
+                    InterfaceMethod::Show(show) => {
+                        if let Some(s) = &state.borrow().sender {
+                            s.emit(app::AppMsg::Action(config::Action::Close));
+                            state.borrow_mut().sender = None;
+                            invocation.return_value(None);
+                            return;
                         }
-                        Err(_) => {
-                            invocation.return_error(gio::DBusError::InvalidArgs, "Invalid JSON");
+                        match serde_json::from_slice(&show.args) {
+                            Ok(init_data) => {
+                                state.borrow_mut().sender =
+                                    Some(app::App::launch(&app, init_data, Some(invocation)));
+                            }
+                            Err(_) => {
+                                invocation.return_error(gio::DBusError::InvalidArgs, "Invalid JSON");
+                            }
                         }
-                    },
+                    }
                     InterfaceMethod::Close => {
                         if let Some(s) = &state.borrow().sender {
                             s.emit(app::AppMsg::Action(config::Action::Close));
