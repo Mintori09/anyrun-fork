@@ -22,7 +22,7 @@ pub fn worker(
     // The environment of the launching command
     env: Vec<(String, String)>,
 ) -> io::Result<()> {
-    tokio::runtime::Builder::new_multi_thread()
+    tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap()

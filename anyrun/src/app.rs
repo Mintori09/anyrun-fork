@@ -57,6 +57,7 @@ pub struct App {
     tx: mpsc::Sender<anyrun_provider_ipc::Request>,
     css_provider: gtk::CssProvider,
     selected_index: usize,
+    selected_plugin_index: Option<usize>,
     search_cancellable: Option<gio::Cancellable>,
 }
 
@@ -79,22 +80,32 @@ impl App {
         controller.sender().clone()
     }
 
-    fn sync_ui_selection(&self, widgets: &mut AppWidgets, matches: &[(&PluginBox, &PluginMatch)]) {
+    fn sync_ui_selection(&self, widgets: &mut AppWidgets, matches: &[(&PluginBox, &PluginMatch)]) -> Option<usize> {
         if matches.is_empty() {
-            return;
+            return self.selected_plugin_index;
         }
 
-        for plugin in self.plugins.iter() {
-            plugin
-                .matches
-                .widget()
-                .select_row(Option::<&gtk4::ListBoxRow>::None);
+        // Only deselect the previously selected plugin instead of all plugins
+        if let Some(old_idx) = self.selected_plugin_index {
+            if let Some(old_plugin) = self.plugins.get(old_idx) {
+                old_plugin
+                    .matches
+                    .widget()
+                    .select_row(Option::<&gtk4::ListBoxRow>::None);
+            }
         }
+
+        let mut new_plugin_index = self.selected_plugin_index;
 
         if let Some((plugin, plugin_match)) = matches.get(self.selected_index) {
             let listbox = plugin.matches.widget();
             let row = &plugin_match.row;
             listbox.select_row(Some(row));
+
+            // Determine which plugin is now selected
+            new_plugin_index = self.plugins.iter().enumerate()
+                .find(|(_, p)| std::ptr::eq(*p, *plugin))
+                .map(|(i, _)| i);
 
             let adj = widgets._scroll.vadjustment();
 
@@ -113,6 +124,7 @@ impl App {
             }
         }
         widgets._entry.grab_focus_without_selecting();
+        new_plugin_index
     }
 
     fn combined_matches(&self) -> Vec<(&PluginBox, &PluginMatch)> {
@@ -298,7 +310,7 @@ impl Component for App {
             .launch(plugins.clone())
             .forward(sender.input_sender(), AppMsg::PluginOutput);
 
-        let (tx, rx) = mpsc::channel(10);
+        let (tx, rx) = mpsc::channel(64);
 
         sender.spawn_command(glib::clone!(
             #[strong]
@@ -325,6 +337,7 @@ impl Component for App {
             tx,
             css_provider,
             selected_index: 0,
+            selected_plugin_index: None,
             search_cancellable: None,
         };
 
@@ -377,7 +390,7 @@ impl Component for App {
 
                 // If show_results_immediately is enabled, trigger initial search with empty input
                 if self.config.show_results_immediately {
-                    let _ = self.tx.blocking_send(anyrun_provider_ipc::Request::Query {
+                    let _ = self.tx.try_send(anyrun_provider_ipc::Request::Query {
                         text: String::new(),
                     });
                 }
@@ -419,7 +432,8 @@ impl Component for App {
                         let _ = self.tx.blocking_send(ipc::Request::Quit);
                     }
                     Action::Down | Action::Up => {
-                        let len = self.combined_matches().len();
+                        // Compute len without allocating a full Vec
+                        let len: usize = self.plugins.iter().map(|p| p.matches.len()).sum();
                         if len == 0 {
                             return;
                         }
@@ -435,7 +449,7 @@ impl Component for App {
                         }
 
                         let matches = self.combined_matches();
-                        self.sync_ui_selection(widgets, &matches);
+                        self.selected_plugin_index = self.sync_ui_selection(widgets, &matches);
                     }
                     Action::Select => {
                         let matches = self.combined_matches();
@@ -445,7 +459,7 @@ impl Component for App {
 
                             drop(matches);
 
-                            let _ = self.tx.blocking_send(ipc::Request::Handle {
+                            let _ = self.tx.try_send(ipc::Request::Handle {
                                 plugin: info,
                                 selection: content,
                             });
@@ -473,7 +487,7 @@ impl Component for App {
             }
             AppMsg::PluginOutput(PluginBoxOutput::MatchesLoaded) => {
                 let matches = self.combined_matches();
-                if let Some((plugin, plugin_match)) = self.combined_matches().first() {
+                if let Some((plugin, plugin_match)) = matches.first() {
                     plugin.matches.widget().select_row(Some(&plugin_match.row));
                 }
 
@@ -532,7 +546,7 @@ impl Component for App {
                 match result {
                     HandleResult::Close => sender.input(AppMsg::Action(Action::Close)),
                     HandleResult::Refresh(exclusive) => {
-                        let _ = self.tx.blocking_send(ipc::Request::Query {
+                        let _ = self.tx.try_send(ipc::Request::Query {
                             text: widgets._entry.text().into(),
                         });
                         if exclusive {
