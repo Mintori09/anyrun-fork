@@ -74,6 +74,7 @@ pub enum Error {
 pub struct Socket {
     pub inner: BufReader<UnixStream>,
     recv_buf: String,
+    send_buf: Vec<u8>,
 }
 
 impl Socket {
@@ -83,14 +84,16 @@ impl Socket {
         Self {
             inner,
             recv_buf: String::new(),
+            send_buf: Vec::with_capacity(4096),
         }
     }
 
     pub async fn send<T: Serialize>(&mut self, value: &T) -> io::Result<()> {
-        let mut buf = Vec::new();
-        serde_json::to_writer(&mut buf, value).map_err(io::Error::other)?;
-        buf.push(b'\n');
-        self.inner.get_mut().write_all(&buf).await?;
+        self.send_buf.clear();
+        serde_json::to_writer(&mut self.send_buf, value).map_err(io::Error::other)?;
+        self.send_buf.push(b'\n');
+        self.inner.get_mut().write_all(&self.send_buf).await?;
+        self.inner.get_mut().flush().await?;
         Ok(())
     }
 
