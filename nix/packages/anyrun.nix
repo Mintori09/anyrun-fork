@@ -39,6 +39,7 @@ rustPlatform.buildRustPackage {
       (s + /anyrun-macros)
       (s + /anyrun-plugin)
       (s + /plugins)
+      (s + /anyrun-provider)
       (s + /Cargo.toml)
       (s + /Cargo.lock)
     ];
