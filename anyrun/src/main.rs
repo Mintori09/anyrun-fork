@@ -261,17 +261,17 @@ fn run_daemon(args: Args) {
         std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".to_string())
     ));
 
-    // Ensure the socket file does not already exist
     let _ = std::fs::remove_file(&socket_path);
+    let provider_path = expand_tilde(&config.provider);
 
-    let provider_child = std::process::Command::new(&config.provider)
+    let provider_child = std::process::Command::new(&provider_path)
         .arg("--config-dir")
         .arg(config_dir.as_deref().unwrap_or(anyrun_provider_ipc::CONFIG_DIRS[0]))
         .args(
             config
                 .plugins
                 .iter()
-                .flat_map(|plugin| [PathBuf::from("-p"), plugin.to_owned()]),
+                .flat_map(|plugin| [PathBuf::from("-p"), expand_tilde(plugin)]),
         )
         .arg("socket")
         .arg(&socket_path)
@@ -362,4 +362,15 @@ fn run_daemon(args: Args) {
         .expect("Failed to register object");
 
     app.run_with_args(&Vec::<String>::new());
+}
+
+fn expand_tilde(path: &std::path::Path) -> PathBuf {
+    if let Some(path_str) = path.to_str() {
+        if path_str.starts_with("~/") {
+            if let Ok(home) = std::env::var("HOME") {
+                return PathBuf::from(path_str.replacen('~', &home, 1));
+            }
+        }
+    }
+    path.to_path_buf()
 }
