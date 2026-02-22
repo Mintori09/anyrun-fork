@@ -8,7 +8,7 @@ use anyrun_provider_ipc as ipc;
 use gtk::{gdk, gio, glib, prelude::*};
 use gtk4 as gtk;
 use gtk4_layer_shell::{Edge, LayerShell};
-use relm4::{prelude::*, ComponentBuilder, Sender};
+use relm4::{prelude::*, ComponentBuilder, ComponentController, Sender};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::PathBuf;
@@ -18,6 +18,11 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::mpsc;
+
+#[derive(Debug, Clone)]
+pub struct SendInvocation(pub gio::DBusMethodInvocation);
+unsafe impl Send for SendInvocation {}
+unsafe impl Sync for SendInvocation {}
 
 pub const DEFAULT_CSS: &str = include_str!("../res/style.css");
 
@@ -40,6 +45,7 @@ pub enum AppMsg {
     Action(Action),
     EntryChanged(String),
     PluginOutput(PluginBoxOutput),
+    Activate(Option<SendInvocation>),
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -58,13 +64,14 @@ pub struct DaemonContext {
 
 pub struct App {
     config: Arc<Config>,
-    invocation: Option<gio::DBusMethodInvocation>,
+    invocation: Option<SendInvocation>,
     plugins: FactoryVecDeque<PluginBox>,
     post_run_action: PostRunAction,
     tx: mpsc::Sender<anyrun_provider_ipc::Request>,
     css_provider: gtk::CssProvider,
     selected_index: usize,
     selected_plugin_index: Option<usize>,
+    config_dir: Option<String>,
     is_daemon: bool,
     search_cancellable: Option<gio::Cancellable>,
 }
@@ -73,7 +80,7 @@ impl App {
     pub fn launch(
         app: &gtk::Application,
         app_init: AppInit,
-        invocation: Option<gio::DBusMethodInvocation>,
+        invocation: Option<SendInvocation>,
         daemon_context: Option<Arc<DaemonContext>>,
     ) -> Sender<AppMsg> {
         let builder = ComponentBuilder::<App>::default();
@@ -83,8 +90,7 @@ impl App {
         let mut controller = connector.detach();
         let window = controller.widget();
         app.add_window(window);
-        window.set_visible(true);
-
+        window.set_visible(false);
         controller.detach_runtime();
         controller.sender().clone()
     }
@@ -160,7 +166,7 @@ impl App {
 impl Component for App {
     type Input = AppMsg;
     type Output = ();
-    type Init = (AppInit, Option<gio::DBusMethodInvocation>, Option<Arc<DaemonContext>>);
+    type Init = (AppInit, Option<SendInvocation>, Option<Arc<DaemonContext>>);
     type CommandOutput = anyrun_provider_ipc::Response;
 
     view! {
@@ -257,7 +263,7 @@ impl Component for App {
     ) -> relm4::ComponentParts<Self> {
         let (config, config_dir, css_provider) = if let Some(ctx) = daemon_context.as_ref() {
             gtk::style_context_add_provider_for_display(
-                &WidgetExt::display(&root),
+                &root.upcast_ref::<gtk::Widget>().display(),
                 &ctx.css_provider,
                 gtk::STYLE_PROVIDER_PRIORITY_USER,
             );
@@ -312,7 +318,7 @@ impl Component for App {
             };
 
             gtk::style_context_add_provider_for_display(
-                &WidgetExt::display(&root),
+                &root.upcast_ref::<gtk::Widget>().display(),
                 &css_provider,
                 gtk::STYLE_PROVIDER_PRIORITY_USER,
             );
@@ -362,6 +368,7 @@ impl Component for App {
             post_run_action: PostRunAction::None,
             tx,
             css_provider,
+            config_dir,
             selected_index: 0,
             selected_plugin_index: None,
             is_daemon: daemon_context.is_some(),
@@ -439,11 +446,11 @@ impl Component for App {
             AppMsg::Action(action) => {
                 match action {
                     Action::Close => {
-                        if let Some(invocation) = self.invocation.clone() {
+                        if let Some(SendInvocation(invocation)) = self.invocation.clone() {
                             invocation.return_value(Some(
                                 &(serde_json::to_vec(&self.post_run_action).unwrap(),).to_variant(),
                             ));
-                        } else {
+                        } else if !self.is_daemon {
                             match &self.post_run_action {
                                 PostRunAction::Stdout(bytes) => {
                                     io::stdout().lock().write_all(bytes).unwrap()
@@ -454,10 +461,15 @@ impl Component for App {
                         }
                         // Unload the style so a new one can be loaded on next show
                         gtk::style_context_remove_provider_for_display(
-                            &WidgetExt::display(root),
+                            &root.upcast_ref::<gtk::Widget>().display(),
                             &self.css_provider,
                         );
-                        root.close();
+                        if self.is_daemon {
+                            root.set_visible(false);
+                            self.invocation = None;
+                        } else {
+                            root.close();
+                        }
                         // FIXME: Make sure the worker has actually correctly shut down before
                         // exiting
                         if !self.is_daemon {
@@ -541,6 +553,51 @@ impl Component for App {
                     }
                 }
             }
+            AppMsg::Activate(invocation) => {
+                self.invocation = invocation;
+                self.post_run_action = PostRunAction::None;
+                widgets._entry.set_text("");
+
+                // Re-load CSS if in daemon mode to support hot-reload
+                if self.is_daemon {
+                    if let Some(config_dir) = &self.config_dir {
+                        match fs::read_to_string(format!("{config_dir}/style.css")) {
+                            Ok(style) => {
+                                self.css_provider.load_from_string(&style);
+                            }
+                            Err(_) => {
+                                self.css_provider.load_from_string(DEFAULT_CSS);
+                            }
+                        }
+                    }
+                }
+
+                // Re-apply style provider because it might have been removed on Close
+                gtk::style_context_add_provider_for_display(
+                    &root.upcast_ref::<gtk::Widget>().display(),
+                    &self.css_provider,
+                    gtk::STYLE_PROVIDER_PRIORITY_USER,
+                );
+
+                root.set_visible(true);
+                widgets._entry.grab_focus_without_selecting();
+
+                // Re-trigger geometry calculation (AppMsg::Show)
+                if let Some(surface) = root.surface() {
+                    let display = root.upcast_ref::<gtk::Widget>().display();
+                    if let Some(monitor) = display.monitor_at_surface(&surface) {
+                        let geometry: gdk::Rectangle = monitor.geometry();
+                        sender.input(AppMsg::Show {
+                            width: geometry.width() as u32,
+                            height: geometry.height() as u32,
+                        });
+                    }
+                }
+
+                if self.is_daemon {
+                    let _ = self.tx.try_send(ipc::Request::Reset);
+                }
+            }
         }
         self.update_view(widgets, sender);
     }
@@ -584,8 +641,6 @@ impl Component for App {
                         });
                         if exclusive {
                             for (i, plugin_box) in self.plugins.iter().enumerate() {
-                                // While normally true, in this case the function addresses will be consistent
-                                // at runtime so it is fine for differentiating between them
                                 if plugin_box.plugin_info != plugin {
                                     self.plugins.send(i, PluginBoxInput::Enable(false));
                                 }

@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use gtk4::{self as gtk, gio, glib, prelude::*};
-use relm4::Sender;
+use relm4::ComponentController;
 use serde::{Deserialize, Serialize};
 use std::{
     cell::RefCell,
@@ -82,8 +82,7 @@ enum Command {
 }
 
 struct DaemonState {
-    sender: Option<Sender<app::AppMsg>>,
-    context: Arc<app::DaemonContext>,
+    controller: relm4::Controller<app::App>,
     provider_child: std::process::Child,
 }
 
@@ -262,6 +261,9 @@ fn run_daemon(args: Args) {
         std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".to_string())
     ));
 
+    // Ensure the socket file does not already exist
+    let _ = std::fs::remove_file(&socket_path);
+
     let provider_child = std::process::Command::new(&config.provider)
         .arg("--config-dir")
         .arg(config_dir.as_deref().unwrap_or(anyrun_provider_ipc::CONFIG_DIRS[0]))
@@ -283,10 +285,35 @@ fn run_daemon(args: Args) {
         socket_path,
     });
 
+    // Launch the persistent UI component
+    let app_init = app::AppInit {
+        args: args.clone(),
+        stdin: Vec::new(),
+        env: std::env::vars()
+            .filter(|(k, _)| {
+                k == "HOME"
+                    || k.starts_with("XDG_")
+                    || k == "PATH"
+                    || k == "DISPLAY"
+                    || k == "WAYLAND_DISPLAY"
+                    || k.starts_with("ANYRUN_")
+                    || k == "LANG"
+                    || k == "TERM"
+            })
+            .collect(),
+    };
+
+    let builder = relm4::ComponentBuilder::<app::App>::default();
+    let connector = builder.launch((app_init, None, Some(context)));
+    let mut controller = connector.detach();
+    let window = controller.widget();
+    app.add_window(window);
+    window.set_visible(false);
+    controller.detach_runtime();
+
     let _hold = app.hold();
     let state = Rc::new(RefCell::new(DaemonState {
-        sender: None,
-        context,
+        controller,
         provider_child,
     }));
     let dbus_conn = app
@@ -307,21 +334,12 @@ fn run_daemon(args: Args) {
             move |_, _, method, invocation| {
                 match method {
                     InterfaceMethod::Show(show) => {
-                        if let Some(s) = &state.borrow().sender {
-                            s.emit(app::AppMsg::Action(crate::config::Action::Close));
-                            state.borrow_mut().sender = None;
-                            invocation.return_value(None);
-                            return;
-                        }
-                        match serde_json::from_slice(&show.args) {
-                            Ok(init_data) => {
-                                let ctx = state.borrow().context.clone();
-                                state.borrow_mut().sender = Some(app::App::launch(
-                                    &app,
-                                    init_data,
-                                    Some(invocation),
-                                    Some(ctx),
-                                ));
+                        match serde_json::from_slice::<app::AppInit>(&show.args) {
+                            Ok(_init_data) => {
+                                // Since it's persistent, we don't use the init_data's args/env for the component itself,
+                                // but we could pass them if needed. For now, we reuse the persistent state.
+                                // We update the sender with a new activation message.
+                                state.borrow().controller.sender().emit(app::AppMsg::Activate(Some(app::SendInvocation(invocation))));
                             }
                             Err(_) => {
                                 invocation.return_error(gio::DBusError::InvalidArgs, "Invalid JSON");
@@ -329,10 +347,7 @@ fn run_daemon(args: Args) {
                         }
                     }
                     InterfaceMethod::Close => {
-                        if let Some(s) = &state.borrow().sender {
-                            s.emit(app::AppMsg::Action(crate::config::Action::Close));
-                        }
-                        state.borrow_mut().sender = None;
+                        state.borrow().controller.sender().emit(app::AppMsg::Action(crate::config::Action::Close));
                         invocation.return_value(None);
                     }
                     InterfaceMethod::Quit => {
