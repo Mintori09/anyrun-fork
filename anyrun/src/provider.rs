@@ -91,7 +91,17 @@ pub fn worker_connect(
         .build()
         .unwrap()
         .block_on(async {
-            let stream = tokio::net::UnixStream::connect(socket_path).await?;
+            let mut attempts = 0;
+            let stream = loop {
+                match tokio::net::UnixStream::connect(&socket_path).await {
+                    Ok(stream) => break stream,
+                    Err(e) if attempts < 10 => {
+                        attempts += 1;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                    }
+                    Err(e) => return Err(e),
+                }
+            };
             let mut socket = ipc::Socket::new(stream);
             relay_loop(&mut socket, &mut rx, &sender).await
         })
