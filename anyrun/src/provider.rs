@@ -12,7 +12,8 @@ use tokio::{net::UnixListener, sync::mpsc::Receiver};
 
 use crate::config::Config;
 
-pub fn worker(
+
+pub fn worker_spawn(
     config: Arc<Config>,
     config_dir: Option<String>,
     mut rx: Receiver<anyrun_provider_ipc::Request>,
@@ -68,27 +69,7 @@ pub fn worker(
             let (stream, _) = listener.accept().await?;
             let mut socket = ipc::Socket::new(stream);
 
-            loop {
-                tokio::select! {
-                    req = rx.recv() => {
-                        if let Some(req) = req {
-                        socket.send(&req).await?;
-                        if matches!(req, ipc::Request::Quit) {
-                            break;
-                        }
-                        }
-                    }
-                    res = socket.recv() => {
-                        match res {
-                    Ok(response) => sender.emit(response),
-                    Err(why) => {
-                        eprintln!("[anyrun] Error reading from IPC: {why}");
-                        break;
-                    },
-                        }
-                    }
-                }
-            }
+            relay_loop(&mut socket, &mut rx, &sender).await?;
 
             // Remove it after we are done with it
             let _ = fs::remove_file(&socket_path);
@@ -98,4 +79,49 @@ pub fn worker(
             Ok(())
         }
     )
+}
+
+pub fn worker_connect(
+    socket_path: PathBuf,
+    mut rx: Receiver<anyrun_provider_ipc::Request>,
+    sender: Sender<anyrun_provider_ipc::Response>,
+) -> io::Result<()> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            let stream = tokio::net::UnixStream::connect(socket_path).await?;
+            let mut socket = ipc::Socket::new(stream);
+            relay_loop(&mut socket, &mut rx, &sender).await
+        })
+}
+
+async fn relay_loop(
+    socket: &mut ipc::Socket,
+    rx: &mut Receiver<anyrun_provider_ipc::Request>,
+    sender: &Sender<anyrun_provider_ipc::Response>,
+) -> io::Result<()> {
+    loop {
+        tokio::select! {
+            req = rx.recv() => {
+                if let Some(req) = req {
+                    socket.send(&req).await?;
+                    if matches!(req, ipc::Request::Quit) {
+                        break;
+                    }
+                }
+            }
+            res = socket.recv() => {
+                match res {
+                    Ok(response) => sender.emit(response),
+                    Err(why) => {
+                        eprintln!("[anyrun] Error reading from IPC: {why}");
+                        break;
+                    },
+                }
+            }
+        }
+    }
+    Ok(())
 }

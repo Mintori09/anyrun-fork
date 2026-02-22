@@ -19,7 +19,7 @@ use std::{
 };
 use tokio::sync::mpsc;
 
-const DEFAULT_CSS: &str = include_str!("../res/style.css");
+pub const DEFAULT_CSS: &str = include_str!("../res/style.css");
 
 #[derive(Deserialize, Serialize)]
 pub enum PostRunAction {
@@ -49,6 +49,13 @@ pub struct AppInit {
     pub env: Vec<(String, String)>,
 }
 
+pub struct DaemonContext {
+    pub config: Arc<Config>,
+    pub config_dir: Option<String>,
+    pub css_provider: gtk::CssProvider,
+    pub socket_path: PathBuf,
+}
+
 pub struct App {
     config: Arc<Config>,
     invocation: Option<gio::DBusMethodInvocation>,
@@ -58,6 +65,7 @@ pub struct App {
     css_provider: gtk::CssProvider,
     selected_index: usize,
     selected_plugin_index: Option<usize>,
+    is_daemon: bool,
     search_cancellable: Option<gio::Cancellable>,
 }
 
@@ -66,10 +74,11 @@ impl App {
         app: &gtk::Application,
         app_init: AppInit,
         invocation: Option<gio::DBusMethodInvocation>,
+        daemon_context: Option<Arc<DaemonContext>>,
     ) -> Sender<AppMsg> {
         let builder = ComponentBuilder::<App>::default();
 
-        let connector = builder.launch((app_init, invocation));
+        let connector = builder.launch((app_init, invocation, daemon_context));
 
         let mut controller = connector.detach();
         let window = controller.widget();
@@ -151,7 +160,7 @@ impl App {
 impl Component for App {
     type Input = AppMsg;
     type Output = ();
-    type Init = (AppInit, Option<gio::DBusMethodInvocation>);
+    type Init = (AppInit, Option<gio::DBusMethodInvocation>, Option<Arc<DaemonContext>>);
     type CommandOutput = anyrun_provider_ipc::Response;
 
     view! {
@@ -242,67 +251,76 @@ impl Component for App {
     }
 
     fn init(
-        (app_init, invocation): Self::Init,
+        (app_init, invocation, daemon_context): Self::Init,
         root: Self::Root,
         sender: relm4::ComponentSender<Self>,
     ) -> relm4::ComponentParts<Self> {
-        let user_dir = env::var("XDG_CONFIG_HOME")
-            .map(|c| format!("{c}/anyrun"))
-            .or_else(|_| env::var("HOME").map(|h| format!("{h}/.config/anyrun")))
-            .unwrap();
-        let config_dir = app_init
-            .args
-            .config_dir
-            .clone()
-            .map(Some)
-            .unwrap_or_else(|| {
-                if PathBuf::from(&user_dir).exists() {
-                    Some(user_dir.clone())
-                } else {
-                    ipc::CONFIG_DIRS
-                        .iter()
-                        .map(|path| path.to_string())
-                        .find(|path| PathBuf::from(path).exists())
-                }
-            });
-
-        let css_provider = gtk::CssProvider::new();
-
-        let mut config = if let Some(config_dir) = &config_dir {
-            match fs::read_to_string(format!("{config_dir}/style.css")) {
-                Ok(style) => {
-                    css_provider.load_from_string(&style);
-                }
-                Err(why) => {
-                    eprintln!("[anyrun] Failed to load CSS: {why}");
-                    css_provider.load_from_string(DEFAULT_CSS);
-                }
-            }
-            match fs::read(format!("{config_dir}/config.ron")) {
-                Ok(content) => ron::de::from_bytes(&content).unwrap_or_else(|why| {
-                    eprintln!("[anyrun] Failed to parse config file, using default values: {why}");
-                    Config::default()
-                }),
-                Err(why) => {
-                    eprintln!("[anyrun] Failed to read config file, using default values: {why}");
-                    Config::default()
-                }
-            }
+        let (config, config_dir, css_provider) = if let Some(ctx) = daemon_context.as_ref() {
+            gtk::style_context_add_provider_for_display(
+                &WidgetExt::display(&root),
+                &ctx.css_provider,
+                gtk::STYLE_PROVIDER_PRIORITY_USER,
+            );
+            (ctx.config.clone(), ctx.config_dir.clone(), ctx.css_provider.clone())
         } else {
-            eprintln!("[anyrun] No config found in any searched paths");
-            css_provider.load_from_string(DEFAULT_CSS);
-            Config::default()
+            let user_dir = env::var("XDG_CONFIG_HOME")
+                .map(|c| format!("{c}/anyrun"))
+                .or_else(|_| env::var("HOME").map(|h| format!("{h}/.config/anyrun")))
+                .unwrap();
+            let config_dir = app_init
+                .args
+                .config_dir
+                .clone()
+                .map(Some)
+                .unwrap_or_else(|| {
+                    if PathBuf::from(&user_dir).exists() {
+                        Some(user_dir.clone())
+                    } else {
+                        ipc::CONFIG_DIRS
+                            .iter()
+                            .map(|path| path.to_string())
+                            .find(|path| PathBuf::from(path).exists())
+                    }
+                });
+
+            let css_provider = gtk::CssProvider::new();
+
+            let mut config = if let Some(config_dir) = &config_dir {
+                match fs::read_to_string(format!("{config_dir}/style.css")) {
+                    Ok(style) => {
+                        css_provider.load_from_string(&style);
+                    }
+                    Err(why) => {
+                        eprintln!("[anyrun] Failed to load CSS: {why}");
+                        css_provider.load_from_string(DEFAULT_CSS);
+                    }
+                }
+                match fs::read(format!("{config_dir}/config.ron")) {
+                    Ok(content) => ron::de::from_bytes(&content).unwrap_or_else(|why| {
+                        eprintln!("[anyrun] Failed to parse config file, using default values: {why}");
+                        Config::default()
+                    }),
+                    Err(why) => {
+                        eprintln!("[anyrun] Failed to read config file, using default values: {why}");
+                        Config::default()
+                    }
+                }
+            } else {
+                eprintln!("[anyrun] No config found in any searched paths");
+                css_provider.load_from_string(DEFAULT_CSS);
+                Config::default()
+            };
+
+            gtk::style_context_add_provider_for_display(
+                &WidgetExt::display(&root),
+                &css_provider,
+                gtk::STYLE_PROVIDER_PRIORITY_USER,
+            );
+
+            config.merge_opt(app_init.args.config.clone());
+
+            (Arc::new(config), config_dir, css_provider)
         };
-
-        gtk::style_context_add_provider_for_display(
-            &WidgetExt::display(&root),
-            &css_provider,
-            gtk::STYLE_PROVIDER_PRIORITY_USER,
-        );
-
-        config.merge_opt(app_init.args.config.clone());
-
-        let config = Arc::new(config);
 
         let plugins = gtk::Box::builder().build();
 
@@ -311,6 +329,8 @@ impl Component for App {
             .forward(sender.input_sender(), AppMsg::PluginOutput);
 
         let (tx, rx) = mpsc::channel(64);
+
+        let socket_path = daemon_context.as_ref().map(|ctx| ctx.socket_path.clone());
 
         sender.spawn_command(glib::clone!(
             #[strong]
@@ -322,8 +342,14 @@ impl Component for App {
             #[strong(rename_to = env)]
             app_init.env,
             move |sender| {
-                if let Err(why) = provider::worker(config, config_dir, rx, sender, stdin, env) {
-                    eprintln!("[anyrun] IPC worker returned an error: {why}");
+                if let Some(socket_path) = socket_path {
+                    if let Err(why) = provider::worker_connect(socket_path, rx, sender) {
+                        eprintln!("[anyrun] IPC worker failed to connect: {why}");
+                    }
+                } else {
+                    if let Err(why) = provider::worker_spawn(config, config_dir, rx, sender, stdin, env) {
+                        eprintln!("[anyrun] IPC worker returned an error: {why}");
+                    }
                 }
             }
         ));
@@ -338,8 +364,13 @@ impl Component for App {
             css_provider,
             selected_index: 0,
             selected_plugin_index: None,
+            is_daemon: daemon_context.is_some(),
             search_cancellable: None,
         };
+
+        if model.is_daemon {
+            let _ = model.tx.try_send(ipc::Request::Reset);
+        }
 
         ComponentParts { model, widgets }
     }
@@ -429,7 +460,9 @@ impl Component for App {
                         root.close();
                         // FIXME: Make sure the worker has actually correctly shut down before
                         // exiting
-                        let _ = self.tx.blocking_send(ipc::Request::Quit);
+                        if !self.is_daemon {
+                            let _ = self.tx.blocking_send(ipc::Request::Quit);
+                        }
                     }
                     Action::Down | Action::Up => {
                         // Compute len without allocating a full Vec

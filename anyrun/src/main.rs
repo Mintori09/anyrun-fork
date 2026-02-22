@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     cell::RefCell,
     io::{self, IsTerminal, Read, Write},
+    path::PathBuf,
     rc::Rc,
     sync::Arc,
 };
@@ -82,6 +83,8 @@ enum Command {
 
 struct DaemonState {
     sender: Option<Sender<app::AppMsg>>,
+    context: Arc<app::DaemonContext>,
+    provider_child: std::process::Child,
 }
 
 fn main() {
@@ -145,7 +148,18 @@ fn run_client(args: Args) {
                 .read_to_end(&mut stdin)
                 .ok();
         }
-        let env: Vec<(String, String)> = std::env::vars().collect();
+        let env: Vec<(String, String)> = std::env::vars()
+            .filter(|(k, _)| {
+                k == "HOME"
+                    || k.starts_with("XDG_")
+                    || k == "PATH"
+                    || k == "DISPLAY"
+                    || k == "WAYLAND_DISPLAY"
+                    || k.starts_with("ANYRUN_")
+                    || k == "LANG"
+                    || k == "TERM"
+            })
+            .collect();
         app::AppInit { args, stdin, env }
     };
 
@@ -190,19 +204,91 @@ fn run_client(args: Args) {
         let shared_init = Arc::new(read_init_data());
 
         app.connect_activate(move |app| {
-            app::App::launch(app, (*shared_init).clone(), None);
+            app::App::launch(app, (*shared_init).clone(), None, None);
         });
         app.run_with_args(&Vec::<String>::new());
     }
 }
 
-fn run_daemon(_args: Args) {
+fn run_daemon(args: Args) {
     let app = gtk::Application::new(Some("org.anyrun.anyrun"), gio::ApplicationFlags::IS_SERVICE);
     app.register(None::<&gio::Cancellable>)
         .expect("Failed to register daemon");
 
+    let user_dir = std::env::var("XDG_CONFIG_HOME")
+        .map(|c| format!("{c}/anyrun"))
+        .or_else(|_| std::env::var("HOME").map(|h| format!("{h}/.config/anyrun")))
+        .unwrap();
+    let config_dir = args.config_dir.clone().or_else(|| {
+        if std::path::PathBuf::from(&user_dir).exists() {
+            Some(user_dir.clone())
+        } else {
+            anyrun_provider_ipc::CONFIG_DIRS
+                .iter()
+                .map(|path| path.to_string())
+                .find(|path| std::path::PathBuf::from(path).exists())
+        }
+    });
+
+    let css_provider = gtk::CssProvider::new();
+    let mut config = if let Some(config_dir) = &config_dir {
+        match std::fs::read_to_string(format!("{config_dir}/style.css")) {
+            Ok(style) => {
+                css_provider.load_from_string(&style);
+            }
+            Err(why) => {
+                eprintln!("[anyrun] Failed to load CSS: {why}");
+                css_provider.load_from_string(app::DEFAULT_CSS);
+            }
+        }
+        match std::fs::read(format!("{config_dir}/config.ron")) {
+            Ok(content) => ron::de::from_bytes(&content).unwrap_or_else(|why| {
+                eprintln!("[anyrun] Failed to parse config file, using default values: {why}");
+                crate::config::Config::default()
+            }),
+            Err(why) => {
+                eprintln!("[anyrun] Failed to read config file, using default values: {why}");
+                crate::config::Config::default()
+            }
+        }
+    } else {
+        css_provider.load_from_string(app::DEFAULT_CSS);
+        crate::config::Config::default()
+    };
+    config.merge_opt(args.config.clone());
+
+    let socket_path = PathBuf::from(format!(
+        "{}/anyrun-daemon.sock",
+        std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".to_string())
+    ));
+
+    let provider_child = std::process::Command::new(&config.provider)
+        .arg("--config-dir")
+        .arg(config_dir.as_deref().unwrap_or(anyrun_provider_ipc::CONFIG_DIRS[0]))
+        .args(
+            config
+                .plugins
+                .iter()
+                .flat_map(|plugin| [PathBuf::from("-p"), plugin.to_owned()]),
+        )
+        .arg("socket")
+        .arg(&socket_path)
+        .spawn()
+        .expect("Failed to spawn anyrun-provider");
+
+    let context = Arc::new(app::DaemonContext {
+        config: Arc::new(config),
+        config_dir,
+        css_provider,
+        socket_path,
+    });
+
     let _hold = app.hold();
-    let state = Rc::new(RefCell::new(DaemonState { sender: None }));
+    let state = Rc::new(RefCell::new(DaemonState {
+        sender: None,
+        context,
+        provider_child,
+    }));
     let dbus_conn = app
         .dbus_connection()
         .expect("Failed to get DBus connection");
@@ -222,15 +308,20 @@ fn run_daemon(_args: Args) {
                 match method {
                     InterfaceMethod::Show(show) => {
                         if let Some(s) = &state.borrow().sender {
-                            s.emit(app::AppMsg::Action(config::Action::Close));
+                            s.emit(app::AppMsg::Action(crate::config::Action::Close));
                             state.borrow_mut().sender = None;
                             invocation.return_value(None);
                             return;
                         }
                         match serde_json::from_slice(&show.args) {
                             Ok(init_data) => {
-                                state.borrow_mut().sender =
-                                    Some(app::App::launch(&app, init_data, Some(invocation)));
+                                let ctx = state.borrow().context.clone();
+                                state.borrow_mut().sender = Some(app::App::launch(
+                                    &app,
+                                    init_data,
+                                    Some(invocation),
+                                    Some(ctx),
+                                ));
                             }
                             Err(_) => {
                                 invocation.return_error(gio::DBusError::InvalidArgs, "Invalid JSON");
@@ -239,13 +330,14 @@ fn run_daemon(_args: Args) {
                     }
                     InterfaceMethod::Close => {
                         if let Some(s) = &state.borrow().sender {
-                            s.emit(app::AppMsg::Action(config::Action::Close));
+                            s.emit(app::AppMsg::Action(crate::config::Action::Close));
                         }
                         state.borrow_mut().sender = None;
                         invocation.return_value(None);
                     }
                     InterfaceMethod::Quit => {
                         invocation.return_value(None);
+                        let _ = state.borrow_mut().provider_child.kill();
                         app.quit();
                     }
                 }
