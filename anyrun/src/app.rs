@@ -513,6 +513,7 @@ impl Component for App {
                 }
             }
             AppMsg::EntryChanged(text) => {
+                self.selected_index = 0;
                 if let Some(cancellable) = self.search_cancellable.take() {
                     cancellable.cancel();
                 }
@@ -543,7 +544,7 @@ impl Component for App {
                     self.plugins.broadcast(PluginBoxInput::MaybeHide);
                 }
             }
-            AppMsg::PluginOutput(PluginBoxOutput::RowSelected(index)) => {
+            AppMsg::PluginOutput(PluginBoxOutput::RowSelected(index, row_idx)) => {
                 for (i, plugin) in self.plugins.iter().enumerate() {
                     if i != index.current_index() {
                         plugin
@@ -551,6 +552,17 @@ impl Component for App {
                             .widget()
                             .select_row(Option::<&gtk::ListBoxRow>::None);
                     }
+                }
+                if let Some(row_idx) = row_idx {
+                    let mut global_idx = 0;
+                    for (i, plugin) in self.plugins.iter().enumerate() {
+                        if i < index.current_index() {
+                            global_idx += plugin.matches.len();
+                        } else {
+                            break;
+                        }
+                    }
+                    self.selected_index = global_idx + row_idx;
                 }
             }
             AppMsg::Activate(invocation) => {

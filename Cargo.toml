@@ -25,11 +25,14 @@ members = [
   "plugins/kde-clipboard",
   "plugins/kde-active-window",
   "plugins/kill-port",
+  "anyrun-provider",
+  "anyrun-provider/anyrun-provider-ipc",
 ]
 resolver = "2"
 
 [workspace.dependencies]
 anyrun-helper = { path = "./anyrun-helper" }
+anyrun-interface = { git = "https://github.com/anyrun-org/anyrun-interface" }
 
 [profile.release]
 codegen-units = 1

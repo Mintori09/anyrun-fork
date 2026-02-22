@@ -52,13 +52,15 @@
                 };
             in
             {
-              anyrun-provider = inputs.anyrun-provider.packages.${system}.default;
+              anyrun-provider = callPackage ./nix/packages/anyrun-provider.nix {
+                inherit lockFile;
+              };
 
               # By default the anyrun package is built without any plugins
               # as per the `dontBuildPlugins` arg.
               anyrun = callPackage ./nix/packages/anyrun.nix {
                 inherit inputs lockFile;
-                inherit (self.packages.${system}) anyrun-provider;
+                inherit (config.packages) anyrun-provider;
               };
 
               anyrun-with-all-plugins = self.packages.${system}.anyrun.override {

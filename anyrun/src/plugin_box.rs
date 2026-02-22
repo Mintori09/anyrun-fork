@@ -138,7 +138,7 @@ pub enum PluginBoxInput {
 #[derive(Debug)]
 pub enum PluginBoxOutput {
     MatchesLoaded,
-    RowSelected(<PluginBox as FactoryComponent>::Index),
+    RowSelected(<PluginBox as FactoryComponent>::Index, Option<usize>),
 }
 
 #[relm4::factory(pub)]
@@ -186,8 +186,8 @@ impl FactoryComponent for PluginBox {
                 set_css_classes: &["plugin"],
                 set_hexpand: true,
                 connect_row_selected[index] => move |_list, row| {
-                    if row.is_some() {
-                        sender.output(PluginBoxOutput::RowSelected(index.clone())).unwrap();
+                    if let Some(row) = row {
+                        sender.output(PluginBoxOutput::RowSelected(index.clone(), Some(row.index() as usize))).unwrap();
                     }
                 }
             }
