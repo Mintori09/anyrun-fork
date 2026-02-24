@@ -118,7 +118,7 @@ pub fn launch_terminal_at_path(path: &str) {
     };
 
     let mut cmd = Command::new(&terminal);
-    terminal::configure_terminal_environment(&terminal, &mut cmd);
+    terminal::configure_terminal_environment(&mut cmd);
 
     let result = cmd.arg("--working-directory").arg(path).spawn();
 

@@ -1,5 +1,6 @@
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_helper::icon::SystemIcon;
+use anyrun_helper::terminal;
 use anyrun_plugin::*;
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
@@ -150,12 +151,22 @@ fn handler(selection: Match, state: &State) -> HandleResult {
 
                 logger(&format!("Executing: {}", cmd), state);
 
-                let _ = Command::new("sh").arg("-c").arg(cmd).spawn();
+                execute_command(&cmd);
                 return HandleResult::Close;
             }
         }
     }
     HandleResult::Close
+}
+
+fn execute_command(cmd: &str) {
+    let mut command = Command::new("sh");
+    terminal::configure_terminal_environment(&mut command);
+    let result = command.arg("-c").arg(cmd).spawn();
+
+    if let Err(error) = result {
+        eprintln!("[Zoxide] Failed to spawn: {}", error);
+    }
 }
 
 #[cfg(test)]
