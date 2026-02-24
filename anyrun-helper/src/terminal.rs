@@ -46,19 +46,17 @@ fn is_program_in_path(program: &str) -> bool {
     })
 }
 
-pub fn configure_terminal_environment(terminal: &str, command: &mut Command) {
-    if terminal == "kitty" {
-        command.env(
-            "FREETYPE_PROPERTIES",
-            "autofitter:no-stem-darkening=1 cff:no-stem-darkening=1",
-        );
-    }
+pub fn configure_terminal_environment(command: &mut Command) {
+    command.env(
+        "FREETYPE_PROPERTIES",
+        "autofitter:no-stem-darkening=1 cff:no-stem-darkening=1",
+    );
 }
 
 fn launch_in_terminal(terminal: &str, shell_command: &str) {
     let mut process = Command::new(terminal);
 
-    configure_terminal_environment(terminal, &mut process);
+    configure_terminal_environment(&mut process);
 
     process
         .arg("sh")
