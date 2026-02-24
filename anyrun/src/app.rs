@@ -95,7 +95,11 @@ impl App {
         controller.sender().clone()
     }
 
-    fn sync_ui_selection(&self, widgets: &mut AppWidgets, matches: &[(&PluginBox, &PluginMatch)]) -> Option<usize> {
+    fn sync_ui_selection(
+        &self,
+        widgets: &mut AppWidgets,
+        matches: &[(&PluginBox, &PluginMatch)],
+    ) -> Option<usize> {
         if matches.is_empty() {
             return self.selected_plugin_index;
         }
@@ -118,7 +122,10 @@ impl App {
             listbox.select_row(Some(row));
 
             // Determine which plugin is now selected
-            new_plugin_index = self.plugins.iter().enumerate()
+            new_plugin_index = self
+                .plugins
+                .iter()
+                .enumerate()
                 .find(|(_, p)| std::ptr::eq(*p, *plugin))
                 .map(|(i, _)| i);
 
@@ -267,7 +274,11 @@ impl Component for App {
                 &ctx.css_provider,
                 gtk::STYLE_PROVIDER_PRIORITY_USER,
             );
-            (ctx.config.clone(), ctx.config_dir.clone(), ctx.css_provider.clone())
+            (
+                ctx.config.clone(),
+                ctx.config_dir.clone(),
+                ctx.css_provider.clone(),
+            )
         } else {
             let user_dir = env::var("XDG_CONFIG_HOME")
                 .map(|c| format!("{c}/anyrun"))
@@ -303,11 +314,15 @@ impl Component for App {
                 }
                 match fs::read(format!("{config_dir}/config.ron")) {
                     Ok(content) => ron::de::from_bytes(&content).unwrap_or_else(|why| {
-                        eprintln!("[anyrun] Failed to parse config file, using default values: {why}");
+                        eprintln!(
+                            "[anyrun] Failed to parse config file, using default values: {why}"
+                        );
                         Config::default()
                     }),
                     Err(why) => {
-                        eprintln!("[anyrun] Failed to read config file, using default values: {why}");
+                        eprintln!(
+                            "[anyrun] Failed to read config file, using default values: {why}"
+                        );
                         Config::default()
                     }
                 }
@@ -353,7 +368,9 @@ impl Component for App {
                         eprintln!("[anyrun] IPC worker failed to connect: {why}");
                     }
                 } else {
-                    if let Err(why) = provider::worker_spawn(config, config_dir, rx, sender, stdin, env) {
+                    if let Err(why) =
+                        provider::worker_spawn(config, config_dir, rx, sender, stdin, env)
+                    {
                         eprintln!("[anyrun] IPC worker returned an error: {why}");
                     }
                 }
@@ -644,50 +661,48 @@ impl Component for App {
 
                 self.plugins.send(i, PluginBoxInput::Matches(matches));
             }
-            ipc::Response::Handled { plugin, result } => {
-                match result {
-                    HandleResult::Close => sender.input(AppMsg::Action(Action::Close)),
-                    HandleResult::Refresh(exclusive) => {
-                        let _ = self.tx.try_send(ipc::Request::Query {
-                            text: widgets._entry.text().into(),
-                        });
-                        if exclusive {
-                            for (i, plugin_box) in self.plugins.iter().enumerate() {
-                                if plugin_box.plugin_info != plugin {
-                                    self.plugins.send(i, PluginBoxInput::Enable(false));
-                                }
-                            }
-                        } else {
-                            self.plugins.broadcast(PluginBoxInput::Enable(true));
-                        }
-                    }
-                    HandleResult::Copy(rvec) => {
-                        let vec = rvec.to_vec();
-                        let mime = tree_magic_mini::from_u8(&rvec);
-                        if match mime {
-                            "TEXT" | "STRING" | "UTF8_STRING" => true,
-                            mime if mime.starts_with("text/") => true,
-                            _ => false,
-                        } {
-                            root.clipboard().set_text(&String::from_utf8_lossy(&rvec));
-                        } else {
-                            let content = gdk::ContentProvider::for_bytes(
-                                mime,
-                                &glib::Bytes::from_owned(vec.clone()),
-                            );
-                            if let Err(why) = root.clipboard().set_content(Some(&content)) {
-                                eprintln!("[anyrun] Error setting clipboard content: {why}");
+            ipc::Response::Handled { plugin, result } => match result {
+                HandleResult::Close => sender.input(AppMsg::Action(Action::Close)),
+                HandleResult::Refresh(exclusive) => {
+                    let _ = self.tx.try_send(ipc::Request::Query {
+                        text: widgets._entry.text().into(),
+                    });
+                    if exclusive {
+                        for (i, plugin_box) in self.plugins.iter().enumerate() {
+                            if plugin_box.plugin_info != plugin {
+                                self.plugins.send(i, PluginBoxInput::Enable(false));
                             }
                         }
-                        sender.input(AppMsg::Action(Action::Close));
-                    }
-                    HandleResult::Stdout(rvec) => {
-                        io::stdout().lock().write_all(&rvec).unwrap();
-                        self.post_run_action = PostRunAction::Stdout(rvec.into());
-                        sender.input(AppMsg::Action(Action::Close));
+                    } else {
+                        self.plugins.broadcast(PluginBoxInput::Enable(true));
                     }
                 }
-            }
+                HandleResult::Copy(rvec) => {
+                    let vec = rvec.to_vec();
+                    let mime = tree_magic_mini::from_u8(&rvec);
+                    if match mime {
+                        "TEXT" | "STRING" | "UTF8_STRING" => true,
+                        mime if mime.starts_with("text/") => true,
+                        _ => false,
+                    } {
+                        root.clipboard().set_text(&String::from_utf8_lossy(&rvec));
+                    } else {
+                        let content = gdk::ContentProvider::for_bytes(
+                            mime,
+                            &glib::Bytes::from_owned(vec.clone()),
+                        );
+                        if let Err(why) = root.clipboard().set_content(Some(&content)) {
+                            eprintln!("[anyrun] Error setting clipboard content: {why}");
+                        }
+                    }
+                    sender.input(AppMsg::Action(Action::Close));
+                }
+                HandleResult::Stdout(rvec) => {
+                    io::stdout().lock().write_all(&rvec).unwrap();
+                    self.post_run_action = PostRunAction::Stdout(rvec.into());
+                    sender.input(AppMsg::Action(Action::Close));
+                }
+            },
         }
         self.update_view(widgets, sender);
     }

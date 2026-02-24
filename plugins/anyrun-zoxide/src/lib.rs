@@ -1,5 +1,5 @@
 use abi_stable::std_types::{ROption, RString, RVec};
-use anyrun_helper::icon::SystemIcon;
+use anyrun_helper::{icon::SystemIcon, terminal};
 use anyrun_plugin::*;
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
@@ -104,19 +104,25 @@ fn get_all_zoxide_paths() -> Vec<String> {
 #[handler]
 fn handler(selection: Match) -> HandleResult {
     let path = selection.title;
+    launch_terminal_at_path(path.as_str());
+    HandleResult::Close
+}
 
-    let Some(terminal) = anyrun_helper::terminal::get_available_terminal() else {
-        eprintln!("[Libzoxide] Error: No terminal available");
-        return HandleResult::Close;
+pub fn launch_terminal_at_path(path: &str) {
+    let terminal = match terminal::get_available_terminal() {
+        Some(t) => t,
+        None => {
+            eprintln!("[Zoxide] Error: No supported terminal emulator found in PATH.");
+            return;
+        }
     };
 
-    if let Err(why) = Command::new(&terminal)
-        .arg("--working-directory")
-        .arg(path.as_str())
-        .spawn()
-    {
-        eprintln!("[Libzoxide] Error: {}", why);
-    }
+    let mut cmd = Command::new(&terminal);
+    terminal::configure_terminal_environment(&terminal, &mut cmd);
 
-    HandleResult::Close
+    let result = cmd.arg("--working-directory").arg(path).spawn();
+
+    if let Err(error) = result {
+        eprintln!("[Zoxide] Failed to spawn {}: {}", terminal, error);
+    }
 }
