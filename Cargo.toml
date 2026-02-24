@@ -27,6 +27,7 @@ members = [
   "plugins/kill-port",
   "anyrun-provider",
   "anyrun-provider/anyrun-provider-ipc",
+    # "plugins/plugin-sample",
 ]
 resolver = "2"
 
