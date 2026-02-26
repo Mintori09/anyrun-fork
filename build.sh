@@ -19,6 +19,7 @@ main() {
     # sudo install -Dm755 ./target/release/anyrun-provider "$PROVIDER_DEST"
 
     echo "Done! anyrun and anyrun-provider have been updated."
+    notify-send "Build complete!" "Done! anyrun and anyrun-provider have been updated."
 }
 
 main "$@"
