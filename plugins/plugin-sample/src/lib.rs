@@ -1,8 +1,8 @@
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_helper::icon::SystemIcon;
 use anyrun_plugin::*;
-use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
+use fuzzy_matcher::FuzzyMatcher;
 use serde::Deserialize;
 use std::fs;
 

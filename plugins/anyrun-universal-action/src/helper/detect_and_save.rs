@@ -1,5 +1,5 @@
 use crate::action::model::InputCategory;
-use crate::helper::model::*;
+use crate::helper::model::MagikaOutput;
 use dirs::home_dir;
 use std::fs;
 use std::io::Write;
