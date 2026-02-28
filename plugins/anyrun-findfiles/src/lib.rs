@@ -2,78 +2,81 @@ use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::*;
 use serde::{Deserialize, Serialize};
 use std::env;
-use std::fs::{self};
+use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::OnceLock;
 
-static CONFIG: OnceLock<Config> = OnceLock::new();
+static CONFIG_STORE: OnceLock<Config> = OnceLock::new();
+
+const DEFAULT_OPEN_COMMAND: &str = "xdg-open {}";
+const GLOBAL_SCOPE_ID: u64 = u64::MAX;
+const CONFIG_FILE_NAME: &str = "findfiles.ron";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct SearchScope {
-    path: String,
-    prefix: String,
-    excludes: Vec<String>,
-    command: Option<String>,
+pub struct SearchScope {
+    pub path: String,
+    pub prefix: String,
+    pub excludes: Vec<String>,
+    pub command: Option<String>,
 }
 
 impl Default for SearchScope {
     fn default() -> Self {
         Self {
             path: env::var("HOME").unwrap_or_else(|_| "/".into()),
-            prefix: "".into(),
-            excludes: vec![],
+            prefix: String::new(),
+            excludes: Vec::new(),
             command: None,
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-struct FilterRule {
-    hidden: bool,
-    patterns: Vec<String>,
+pub struct FilterRule {
+    pub hidden: bool,
+    pub patterns: Vec<String>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
-struct Config {
-    prefix: String,
-    default_command: String,
-    scopes: Vec<SearchScope>,
-    options: FilterRule,
-    max_entries: usize,
+pub struct Config {
+    pub prefix: String,
+    pub default_command: String,
+    pub scopes: Vec<SearchScope>,
+    pub options: FilterRule,
+    pub max_entries: usize,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            prefix: ":f".into(),
-            default_command: "xdg-open {}".into(),
-            scopes: vec![],
+            prefix: "fd ".into(),
+            default_command: DEFAULT_OPEN_COMMAND.into(),
+            scopes: Vec::new(),
             options: FilterRule::default(),
             max_entries: 10,
         }
     }
 }
 
-// --- CORE ENGINE ---
-
-struct SearchEngine<'a> {
+struct SearchRunner<'a> {
     config: &'a Config,
 }
 
-impl<'a> SearchEngine<'a> {
+impl<'a> SearchRunner<'a> {
     fn new(config: &'a Config) -> Self {
         Self { config }
     }
 
-    fn build_regex(&self, query: &str) -> String {
-        let trimmed_query = query.trim();
-        if trimmed_query.is_empty() {
+    fn format_query_to_regex(&self, query: &str) -> String {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
             return String::new();
         }
 
-        trimmed_query
+        trimmed
             .split_whitespace()
             .map(|word| {
                 word.chars()
@@ -90,82 +93,72 @@ impl<'a> SearchEngine<'a> {
             .join(".*")
     }
 
-    fn execute_search(
-        &self,
-        query: &str,
-        path: &str,
-        excludes: &[String],
-        scope_idx: Option<usize>,
-    ) -> Vec<Match> {
-        let regex = self.build_regex(query);
-
+    fn run_fd_search(&self, query: &str, path: &str, excludes: &[String], id: u64) -> Vec<Match> {
+        let pattern = self.format_query_to_regex(query);
         let mut cmd = Command::new("fd");
-        cmd.args(["--color", "never", "--full-path"]);
 
+        cmd.args(["--color", "never", "--full-path"]);
         cmd.arg("--max-results")
-            .arg((self.config.max_entries).to_string());
+            .arg(self.config.max_entries.to_string());
 
         if self.config.options.hidden {
             cmd.arg("--hidden");
         }
 
-        for exc in excludes {
-            cmd.arg("--exclude").arg(exc);
+        for exclusion in excludes {
+            cmd.arg("--exclude").arg(exclusion);
         }
 
-        if regex.is_empty() {
+        if pattern.is_empty() {
             cmd.arg(".").arg(path);
         } else {
-            cmd.arg(&regex).arg(path);
+            cmd.arg(&pattern).arg(path);
         }
 
-        let match_id = scope_idx.map(|i| i as u64).unwrap_or(u64::MAX);
-
         cmd.output()
-            .map(|out| self.to_matches(&String::from_utf8_lossy(&out.stdout), match_id))
+            .map(|output| {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                self.parse_fd_output(&stdout, id)
+            })
             .unwrap_or_default()
     }
 
-    fn to_matches(&self, stdout: &str, match_id: u64) -> Vec<Match> {
+    fn parse_fd_output(&self, stdout: &str, id: u64) -> Vec<Match> {
         stdout
             .lines()
             .filter_map(|line| {
                 let path = Path::new(line);
-                let name = path.file_name()?.to_str()?;
+                let filename = path.file_name()?.to_str()?;
+                let icon = if path.is_dir() {
+                    "folder"
+                } else {
+                    "text-x-generic"
+                };
 
                 Some(Match {
-                    title: name.into(),
+                    title: filename.into(),
                     description: ROption::RSome(line.to_string().into()),
-                    icon: ROption::RSome(
-                        (if path.is_dir() {
-                            "folder"
-                        } else {
-                            "text-x-generic"
-                        })
-                        .into(),
-                    ),
+                    icon: ROption::RSome(icon.into()),
                     use_pango: false,
-                    id: ROption::RSome(match_id),
+                    id: ROption::RSome(id),
                 })
             })
             .collect()
     }
 }
 
-// --- PLUGIN HOOKS ---
-
 #[init]
 fn init(config_dir: RString) -> Config {
-    let path = Path::new(config_dir.as_str()).join("findfiles.ron");
-    let config: Config = fs::read_to_string(path)
-        .ok()
-        .and_then(|c| ron::from_str(&c).ok())
-        .unwrap_or_default();
-
-    // Store config globally so handler can access custom commands
-    let _ = CONFIG.set(config.clone());
-
+    let config_path = PathBuf::from(config_dir.to_string()).join(CONFIG_FILE_NAME);
+    let config = load_config(config_path);
     config
+}
+
+fn load_config(path: PathBuf) -> Config {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|content| ron::from_str(&content).ok())
+        .unwrap_or_default()
 }
 
 #[info]
@@ -183,19 +176,23 @@ fn get_matches(input: RString, config: &Config) -> RVec<Match> {
         return RVec::new();
     }
 
-    let engine = SearchEngine::new(config);
-    let home = env::var("HOME").unwrap_or_else(|_| "/".into());
+    let runner = SearchRunner::new(config);
+
     for (idx, scope) in config.scopes.iter().enumerate() {
         if input_str.starts_with(&scope.prefix) {
             let query = input_str.trim_start_matches(&scope.prefix).trim();
-            return engine
-                .execute_search(query, &scope.path, &scope.excludes, Some(idx))
+            return runner
+                .run_fd_search(query, &scope.path, &scope.excludes, idx as u64)
                 .into();
         }
     }
+
     if !config.prefix.is_empty() && input_str.starts_with(&config.prefix) {
         let query = input_str.trim_start_matches(&config.prefix).trim();
-        return engine.execute_search(query, &home, &[], None).into();
+        let home = env::var("HOME").unwrap_or_else(|_| "/".into());
+        return runner
+            .run_fd_search(query, &home, &[], GLOBAL_SCOPE_ID)
+            .into();
     }
 
     RVec::new()
@@ -208,21 +205,27 @@ fn handler(selection: Match) -> HandleResult {
         ROption::RNone => return HandleResult::Close,
     };
 
-    let config = CONFIG.get();
-
-    let command_template = match (config, selection.id) {
-        (Some(cfg), ROption::RSome(id)) if id != u64::MAX => cfg
-            .scopes
-            .get(id as usize)
-            .and_then(|s| s.command.as_ref())
-            .unwrap_or(&cfg.default_command),
-        (Some(cfg), _) => &cfg.default_command,
-        (None, _) => "xdg-open {}",
-    };
-
-    let final_command = command_template.replace("{}", &path);
+    let template = resolve_execution_template(selection.id);
+    let final_command = template.replace("{}", &path);
 
     let _ = Command::new("sh").arg("-c").arg(final_command).spawn();
 
     HandleResult::Close
+}
+
+fn resolve_execution_template(match_id: ROption<u64>) -> String {
+    let config = match CONFIG_STORE.get() {
+        Some(cfg) => cfg,
+        None => return DEFAULT_OPEN_COMMAND.to_string(),
+    };
+
+    match match_id {
+        ROption::RSome(id) if id != GLOBAL_SCOPE_ID => config
+            .scopes
+            .get(id as usize)
+            .and_then(|s| s.command.as_ref())
+            .cloned()
+            .unwrap_or_else(|| config.default_command.clone()),
+        _ => config.default_command.clone(),
+    }
 }

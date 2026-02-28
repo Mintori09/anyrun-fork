@@ -24,13 +24,3 @@ pub struct MagikaDetails {
     pub label: String,
     pub group: String,
 }
-
-pub fn create_match(title: &str, description: String, icon: SystemIcon) -> Match {
-    Match {
-        title: title.clone().into(),
-        description: RSome(description.into()),
-        use_pango: false,
-        icon: RSome(icon.as_str().into()),
-        id: RNone,
-    }
-}

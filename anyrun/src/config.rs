@@ -133,6 +133,34 @@ impl Config {
                 key: gdk::Key::Tab,
                 action: Action::Down,
             },
+            Keybind {
+                ctrl: true,
+                alt: false,
+                shift: false,
+                key: gdk::Key::j,
+                action: Action::Down,
+            },
+            Keybind {
+                ctrl: true,
+                alt: false,
+                shift: false,
+                key: gdk::Key::k,
+                action: Action::Up,
+            },
+            Keybind {
+                ctrl: true,
+                alt: false,
+                shift: false,
+                key: gdk::Key::n,
+                action: Action::Down,
+            },
+            Keybind {
+                ctrl: true,
+                alt: false,
+                shift: false,
+                key: gdk::Key::p,
+                action: Action::Up,
+            },
         ]
     }
 }
