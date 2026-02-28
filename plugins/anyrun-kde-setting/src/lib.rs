@@ -24,8 +24,8 @@ struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            show_results_immediately: false,
-            prefix: "set".into(),
+            show_results_immediately: true,
+            prefix: "s ".into(),
             custom_settings: Vec::new(),
         }
     }
@@ -62,7 +62,7 @@ fn info() -> PluginInfo {
 
 #[get_matches]
 fn get_matches(input: RString, state: &State) -> RVec<Match> {
-    let input_str = input.as_str();
+    let input_str = input.as_str().trim_start();
     let prefix = &state.config.prefix;
 
     if let Some(query) = input_str.strip_prefix(prefix) {
