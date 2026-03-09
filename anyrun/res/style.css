@@ -1,10 +1,7 @@
-/* Modern Premium "Glassmorphism" Theme for Anyrun */
-
-@define-color accent #818cf8;
-@define-color bg-color rgba(24, 24, 27, 0.85);
-@define-color bg-selected rgba(63, 63, 70, 0.5);
-@define-color border-color rgba(63, 63, 70, 0.4);
-@define-color fg-color #f4f4f5;
+@define-color bg-color rgba(30, 30, 30, 0.65);
+@define-color bg-selected #0058d0; /* macOS Blue */
+@define-color border-color rgba(255, 255, 255, 0.15);
+@define-color fg-color #ffffff;
 @define-color desc-color #a1a1aa;
 
 window {
@@ -12,47 +9,37 @@ window {
 }
 
 box.main {
-  padding: 15px;
+  padding: 12px;
   border-radius: 16px;
   border: 1px solid @border-color;
   background-color: @bg-color;
-  /* Deep soft shadow for elevation */
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.5);
 }
 
 /* Search Entry */
 text {
-  min-height: 44px;
-  padding: 10px 16px;
-  margin: 4px;
-  border-radius: 12px;
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: 8px;
   color: @fg-color;
-  font-size: 16px;
-  background: rgba(39, 39, 42, 0.3);
-  border: 1px solid transparent;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: 26px; /* Large font for search bar */
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  margin-bottom: 8px; /* Space between input and results */
 }
 
 text:focus {
-  border-color: @accent;
-  background: rgba(39, 39, 42, 0.5);
+  border: none;
+  box-shadow: none;
 }
 
 .matches {
   background: transparent;
-  padding: 4px;
 }
 
 box.plugin {
-  margin: 2px 0;
-  padding: 8px 12px;
-  border-radius: 10px;
-  transition: background 0.15s ease;
-}
-
-box.plugin.info {
-  min-width: 240px;
-  padding: 12px;
+  background: transparent;
 }
 
 list.plugin {
@@ -60,55 +47,42 @@ list.plugin {
 }
 
 label.match {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 16px;
   color: @fg-color;
+  margin-bottom: 2px;
 }
 
 label.match.description {
   font-size: 12px;
   color: @desc-color;
-  margin-top: 2px;
 }
 
 label.plugin.info {
-  font-size: 13px;
-  font-weight: 600;
-  color: @accent;
+  font-size: 11px;
+  font-weight: bold;
+  color: @desc-color;
   text-transform: uppercase;
+  margin-bottom: 4px;
+  margin-left: 8px;
   letter-spacing: 0.05em;
 }
 
 .match {
   background: transparent;
-  margin: 1px 4px;
-  padding: 2px;
-  border-radius: 10px;
-  transition: transform 0.1s ease;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin: 2px 0;
+  transition: all 0.1s ease-out;
 }
 
 .match:selected {
   background-color: @bg-selected;
-  box-shadow: inset 0 0 0 1px @border-color;
-  animation: select-pulse 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .match:selected label.match {
   color: white;
 }
 
-@keyframes select-pulse {
-  0% {
-    transform: scale(0.99);
-    background-color: rgba(129, 140, 248, 0.1);
-  }
-
-  50% {
-    transform: scale(1.005);
-  }
-
-  100% {
-    transform: scale(1);
-    background-color: @bg-selected;
-  }
+.match:selected label.match.description {
+  color: rgba(255, 255, 255, 0.8);
 }

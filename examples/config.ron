@@ -7,10 +7,10 @@ Config(
   x: Fraction(0.5),
 
   // The vertical position, works the same as `x`
-  y: Absolute(0),
+  y: Fraction(0.3),
 
   // The width of the runner
-  width: Absolute(800),
+  width: Absolute(680),
 
   // The minimum height of the runner, the runner will expand to fit all the entries
   // NOTE: If this is set to 0, the window will never shrink after being expanded

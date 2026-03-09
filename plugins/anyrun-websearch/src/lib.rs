@@ -84,6 +84,7 @@ fn handler(selection: Match) -> HandleResult {
     }
 
     focus_to_class("firefox");
+    focus_to_class("zen");
 
     HandleResult::Close
 }
