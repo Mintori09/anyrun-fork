@@ -1,8 +1,8 @@
 [workspace]
 members = [
   "anyrun",
-  # "anyrun-plugin",
-  # "anyrun-macros",
+  "anyrun-plugin",
+  "anyrun-macros",
   # "plugins/symbols",
   # "plugins/kidex",
   # "plugins/translate",
@@ -25,8 +25,8 @@ members = [
   # "plugins/kde-clipboard",
   # "plugins/kde-active-window",
   # "plugins/kill-port",
-  # "anyrun-provider",
-  # "anyrun-provider/anyrun-provider-ipc",
+  "anyrun-provider",
+  "anyrun-provider/anyrun-provider-ipc",
   # "plugins/anyrun-bluetooth",
     # "plugins/plugin-sample",
 ]

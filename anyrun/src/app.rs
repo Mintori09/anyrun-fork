@@ -412,10 +412,17 @@ impl Component for App {
                 height: mon_height,
             } => {
                 // let half_height = (mon_height / 2) as i32;
-
-                let max_height = self.config.max_height.to_val(mon_height);
-                widgets._scroll.set_min_content_height(max_height);
-                widgets._scroll.set_max_content_height(max_height);
+                let matches = self.combined_matches();
+                if matches.is_empty() {
+                    widgets._scroll.set_min_content_height(0);
+                    widgets._scroll.set_max_content_height(0);
+                    widgets._scroll.set_visible(false);
+                } else {
+                    let max_height = self.config.max_height.to_val(mon_height);
+                    widgets._scroll.set_max_content_height(max_height);
+                    widgets._scroll.set_min_content_height(max_height);
+                    widgets._scroll.set_visible(true);
+                }
 
                 let width = self.config.width.to_val(mon_width);
                 let x = self.config.x.to_val(mon_width) - width / 2;
@@ -550,6 +557,28 @@ impl Component for App {
             }
             AppMsg::PluginOutput(PluginBoxOutput::MatchesLoaded) => {
                 let matches = self.combined_matches();
+                if matches.is_empty() {
+                    widgets._scroll.set_min_content_height(0);
+                    widgets._scroll.set_max_content_height(0);
+                    widgets._scroll.set_visible(false);
+                } else {
+                    // Use a reasonable height or the configured max_height
+                    // We need to know the monitor height to calculate max_height.
+                    // For now, let's try to get it from the window surface if possible, 
+                    // or just use a fallback if not yet shown.
+                    let mon_height = if let Some(surface) = root.surface() {
+                        let display = root.upcast_ref::<gtk::Widget>().display();
+                        display.monitor_at_surface(&surface).map(|m| m.geometry().height()).unwrap_or(1080)
+                    } else {
+                        1080
+                    } as u32;
+                    
+                    let max_height = self.config.max_height.to_val(mon_height);
+                    widgets._scroll.set_max_content_height(max_height);
+                    widgets._scroll.set_min_content_height(max_height);
+                    widgets._scroll.set_visible(true);
+                }
+
                 if let Some((plugin, plugin_match)) = matches.first() {
                     plugin.matches.widget().select_row(Some(&plugin_match.row));
                 }
@@ -586,6 +615,9 @@ impl Component for App {
                 self.invocation = invocation;
                 self.post_run_action = PostRunAction::None;
                 widgets._entry.set_text("");
+                widgets._scroll.set_min_content_height(0);
+                widgets._scroll.set_max_content_height(0);
+                widgets._scroll.set_visible(false);
 
                 // Re-load CSS if in daemon mode to support hot-reload
                 if self.is_daemon {

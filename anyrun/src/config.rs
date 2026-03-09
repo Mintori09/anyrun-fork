@@ -53,11 +53,11 @@ impl Config {
     }
 
     fn default_y() -> RelativeNum {
-        RelativeNum::Absolute(0)
+        RelativeNum::Fraction(0.3)
     }
 
     fn default_width() -> RelativeNum {
-        RelativeNum::Fraction(0.5)
+        RelativeNum::Absolute(680)
     }
 
     fn default_height() -> RelativeNum {

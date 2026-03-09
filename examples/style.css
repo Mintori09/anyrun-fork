@@ -1,7 +1,8 @@
-@define-color accent #5599d2;
-@define-color bg-color rgba(22, 22, 22, 0.65);
-@define-color fg-color #ffffff;
-@define-color desc-color rgba(255, 255, 255, 0.7);
+@define-color bg-color rgba(240, 240, 240, 0.85);
+@define-color bg-selected #0058d0; /* macOS Blue */
+@define-color border-color rgba(0, 0, 0, 0.1);
+@define-color fg-color #000000;
+@define-color desc-color #666666;
 
 window {
   background: transparent;
@@ -9,78 +10,79 @@ window {
 
 box.main {
   padding: 12px;
-  margin: 10px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid @border-color;
   background-color: @bg-color;
-  box-shadow:
-    0 8px 32px 0 rgba(0, 0, 0, 0.45),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.2);
 }
 
+/* Search Entry */
 text {
-  min-height: 40px;
-  padding: 0px 12px;
+  min-height: 48px;
+  padding: 0 16px;
   border-radius: 8px;
   color: @fg-color;
-  background-color: rgba(0, 0, 0, 0.25);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 26px; /* Large font for search bar */
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  margin-bottom: 8px; /* Space between input and results */
+}
+
+text:focus {
+  border: none;
+  box-shadow: none;
 }
 
 .matches {
-  background-color: transparent;
-  border-radius: 10px;
-  /* margin-top: 10px; */
+  background: transparent;
 }
 
-box.plugin:first-child {
-  margin-top: 5px;
-}
-
-box.plugin.info {
-  min-width: 200px;
+box.plugin {
+  background: transparent;
 }
 
 list.plugin {
-  background-color: transparent;
+  background: transparent;
 }
 
 label.match {
+  font-size: 16px;
   color: @fg-color;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  margin-bottom: 2px;
 }
 
 label.match.description {
-  font-size: 11px;
+  font-size: 12px;
   color: @desc-color;
 }
 
 label.plugin.info {
-  font-size: 14px;
-  color: @fg-color;
+  font-size: 11px;
+  font-weight: bold;
+  color: @desc-color;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  margin-left: 8px;
+  letter-spacing: 0.05em;
 }
 
 .match {
   background: transparent;
-  transition: background 0.2s;
-  padding: 1px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin: 2px 0;
+  transition: all 0.1s ease-out;
 }
 
 .match:selected {
-  border-left: 4px solid @accent;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  animation: fade 0.2s ease-out;
-  box-shadow: 0 2px 10px rgba(85, 153, 210, 0.15);
+  background-color: @bg-selected;
 }
 
-@keyframes fade {
-  0% {
-    opacity: 0;
-  }
+.match:selected label.match {
+  color: white;
+}
 
-  100% {
-    opacity: 1;
-  }
+.match:selected label.match.description {
+  color: rgba(255, 255, 255, 0.8);
 }
