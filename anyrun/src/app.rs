@@ -161,12 +161,21 @@ impl App {
         matches
     }
 
-    // fn current_selection(&self) -> Option<(usize, &PluginBox, &PluginMatch)> {
-    //     let matches = self.combined_matches();
-    //     matches
-    //         .get(self.selected_index)
-    //         .map(|(p, m)| (self.selected_index, *p, *m))
-    // }
+    fn sync_shortcuts(&self) {
+        let mut count = 0;
+        for (i, plugin) in self.plugins.iter().enumerate() {
+            let mut shortcuts = Vec::new();
+            for _ in plugin.matches.iter() {
+                count += 1;
+                if count <= 10 {
+                    shortcuts.push(Some(count));
+                } else {
+                    shortcuts.push(None);
+                }
+            }
+            self.plugins.send(i, PluginBoxInput::UpdateShortcuts(shortcuts));
+        }
+    }
 }
 
 #[relm4::component(pub)]
@@ -458,6 +467,30 @@ impl Component for App {
                 }
             }
             AppMsg::KeyPressed { key, modifier } => {
+                if modifier.contains(gdk::ModifierType::ALT_MASK) {
+                    let digit = match key {
+                        gdk::Key::_1 => Some(1),
+                        gdk::Key::_2 => Some(2),
+                        gdk::Key::_3 => Some(3),
+                        gdk::Key::_4 => Some(4),
+                        gdk::Key::_5 => Some(5),
+                        gdk::Key::_6 => Some(6),
+                        gdk::Key::_7 => Some(7),
+                        gdk::Key::_8 => Some(8),
+                        gdk::Key::_9 => Some(9),
+                        gdk::Key::_0 => Some(10),
+                        _ => None,
+                    };
+                    if let Some(n) = digit {
+                        let matches = self.combined_matches();
+                        if n <= matches.len() {
+                            self.selected_index = n - 1;
+                            sender.input(AppMsg::Action(Action::Select));
+                            return;
+                        }
+                    }
+                }
+
                 if let Some(Keybind { action, .. }) = self.config.keybinds.iter().find(|keybind| {
                     keybind.key == key
                         && keybind.ctrl == modifier.contains(gdk::ModifierType::CONTROL_MASK)
@@ -589,6 +622,8 @@ impl Component for App {
                     }
                     self.plugins.broadcast(PluginBoxInput::MaybeHide);
                 }
+
+                self.sync_shortcuts();
             }
             AppMsg::PluginOutput(PluginBoxOutput::RowSelected(index, row_idx)) => {
                 for (i, plugin) in self.plugins.iter().enumerate() {

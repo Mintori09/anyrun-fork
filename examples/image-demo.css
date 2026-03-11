@@ -1,0 +1,80 @@
+@define-color bg-color #1a1a1a;
+@define-color bg-selected #2b2b2b;
+@define-color border-color #262626;
+@define-color fg-color #e0e0e0;
+@define-color desc-color #8a8a8a;
+
+window {
+  background: transparent;
+}
+
+box.main {
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid @border-color;
+  background-color: @bg-color;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+
+/* Search Entry */
+text {
+  min-height: 44px;
+  padding: 0 12px;
+  color: @fg-color;
+  font-size: 20px;
+  background: transparent;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+text:focus {
+  border: none;
+  box-shadow: none;
+}
+
+/* Hide plugin info headers for a minimal look */
+label.plugin.info, box.plugin.info {
+  display: none;
+}
+
+.matches {
+  background: transparent;
+}
+
+list.plugin {
+  background: transparent;
+}
+
+/* Individual match rows */
+.match {
+  padding: 8px 12px;
+  border-radius: 10px;
+  margin: 1px 0;
+  transition: all 0.15s ease-out;
+}
+
+/* The selected/hovered state */
+.match:selected {
+  background-color: @bg-selected;
+}
+
+/* Match layout adjustments */
+box.match {
+  spacing: 12px;
+}
+
+label.match.title {
+  font-size: 15px;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+label.match.description {
+  font-size: 13px;
+  color: @desc-color;
+}
+
+/* Match Icon */
+image.match {
+  margin-right: 4px;
+}
