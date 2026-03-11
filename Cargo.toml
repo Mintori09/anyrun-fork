@@ -5,7 +5,7 @@ members = [
   "anyrun-macros",
   # "plugins/symbols",
   # "plugins/kidex",
-  # "plugins/translate",
+  "plugins/translate",
   # "plugins/randr",
   # "plugins/stdin",
   # "plugins/dictionary",
@@ -19,7 +19,7 @@ members = [
   # "plugins/anyrun-websearch",
   # "plugins/anyrun-zoxide",
   # "plugins/anyrun-kde-setting",
-  # "anyrun-helper",
+  "anyrun-helper",
   # "plugins/anyrun-browser",
   # "plugins/anyrun-sync-manager",
   # "plugins/kde-clipboard",
@@ -28,12 +28,12 @@ members = [
   "anyrun-provider",
   "anyrun-provider/anyrun-provider-ipc",
   # "plugins/anyrun-bluetooth",
-    # "plugins/plugin-sample",
+  # "plugins/plugin-sample",
 ]
 resolver = "2"
 
 [workspace.dependencies]
-anyrun-helper = { path = "./anyrun-helper" }
+anyrun-helper    = { path = "./anyrun-helper" }
 anyrun-interface = { git = "https://github.com/anyrun-org/anyrun-interface" }
 
 [profile.release]

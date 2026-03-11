@@ -12,12 +12,18 @@ pub struct PluginMatch {
     pub content: Match,
     pub row: gtk::ListBoxRow,
     config: Arc<Config>,
+    shortcut: Option<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub enum PluginMatchInput {
+    SetShortcut(Option<usize>),
 }
 
 #[relm4::factory(pub)]
 impl FactoryComponent for PluginMatch {
     type Init = (Match, Arc<Config>);
-    type Input = ();
+    type Input = PluginMatchInput;
     type Output = ();
     type CommandOutput = ();
     type ParentWidget = gtk::ListBox;
@@ -67,6 +73,19 @@ impl FactoryComponent for PluginMatch {
                         set_halign: gtk::Align::Start,
                         set_valign: gtk::Align::Center,
                     }
+                },
+
+                gtk::Label {
+                    #[watch]
+                    set_label: &match self.shortcut {
+                        Some(n) => format!("Alt+{}", if n == 10 { 0 } else { n }),
+                        None => String::new(),
+                    },
+                    #[watch]
+                    set_visible: self.shortcut.is_some(),
+                    set_css_classes: &["match", "shortcut"],
+                    set_halign: gtk::Align::End,
+                    set_valign: gtk::Align::Center,
                 }
             }
         }
@@ -114,6 +133,15 @@ impl FactoryComponent for PluginMatch {
             row,
             content,
             config,
+            shortcut: None,
+        }
+    }
+
+    fn update(&mut self, message: Self::Input, _sender: FactorySender<Self>) {
+        match message {
+            PluginMatchInput::SetShortcut(shortcut) => {
+                self.shortcut = shortcut;
+            }
         }
     }
 }
@@ -133,6 +161,7 @@ pub enum PluginBoxInput {
     /// Sent when there is a possibility that the plugin may need to hide, aka
     /// all its matches have already been hidden
     MaybeHide,
+    UpdateShortcuts(Vec<Option<usize>>),
 }
 
 #[derive(Debug)]
@@ -269,6 +298,11 @@ impl FactoryComponent for PluginBox {
                 }
 
                 self.visible = !hide;
+            }
+            PluginBoxInput::UpdateShortcuts(shortcuts) => {
+                for (i, shortcut) in shortcuts.into_iter().enumerate() {
+                    self.matches.send(i, PluginMatchInput::SetShortcut(shortcut));
+                }
             }
         }
 
