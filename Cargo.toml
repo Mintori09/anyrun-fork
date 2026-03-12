@@ -37,8 +37,10 @@ anyrun-helper    = { path = "./anyrun-helper" }
 anyrun-interface = { git = "https://github.com/anyrun-org/anyrun-interface" }
 
 [profile.release]
-codegen-units = 1
-debug         = true
-lto           = "fat"
+codegen-units = 256
+debug         = false
+incremental   = true
+lto           = false
+opt-level     = 1
 panic         = "abort"
-strip         = true
+strip         = false
