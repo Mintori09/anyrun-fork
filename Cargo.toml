@@ -11,7 +11,7 @@ members = [
   # "plugins/dictionary",
   # "plugins/nix-run",
   # "plugins/niri-focus",
-  # "plugins/anyrun-applications",
+  "plugins/anyrun-applications",
   # "plugins/anyrun-calc",
   # "plugins/anyrun-findfiles",
   # "plugins/anyrun-shell-wrapper",
