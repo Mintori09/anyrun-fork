@@ -302,7 +302,8 @@ impl FactoryComponent for PluginBox {
             PluginBoxInput::UpdateShortcuts(shortcuts) => {
                 for (i, shortcut) in shortcuts.into_iter().enumerate() {
                     if i < self.matches.len() {
-                        self.matches.send(i, PluginMatchInput::SetShortcut(shortcut));
+                        self.matches
+                            .send(i, PluginMatchInput::SetShortcut(shortcut));
                     }
                 }
             }
