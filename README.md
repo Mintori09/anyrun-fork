@@ -4,7 +4,7 @@ A Wayland-native runner, similar to KRunner, built with extreme customizability 
 
 I tested it in Kde plasma.
 
-<img width="950" height="702" alt="image" src="/image/Screenshot_20260104_181124.png" />
+<img width="950" height="702" alt="image" src="./image/image.png" />
 
 > [!NOTE]
 > If you use Nvidia and Anyrun refuses to close, you need to set `GSK_RENDERER=ngl`.
