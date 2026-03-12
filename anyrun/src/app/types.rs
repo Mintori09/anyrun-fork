@@ -3,7 +3,7 @@ use crate::{
     plugin_box::PluginBox,
     Args,
 };
-use gtk::{gdk, gio, glib};
+use gtk::{gdk, gio};
 use gtk4 as gtk;
 use libadwaita as adw;
 use relm4::prelude::*;
@@ -25,6 +25,7 @@ pub struct App {
     pub(super) is_daemon: bool,
     pub(super) search_cancellable: Option<gio::Cancellable>,
     pub(super) height_animation: Option<adw::TimedAnimation>,
+    pub(super) last_css_load: Option<std::time::SystemTime>,
 }
 
 #[derive(Debug, Clone)]
