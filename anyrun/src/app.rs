@@ -48,6 +48,7 @@ pub enum AppMsg {
     EntryChanged(String),
     PluginOutput(PluginBoxOutput),
     Activate(Option<SendInvocation>),
+    SyncShortcuts,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -164,14 +165,37 @@ impl App {
         matches
     }
 
-    fn sync_shortcuts(&self) {
+    fn sync_shortcuts(&self, widgets: &AppWidgets) {
         let mut count = 0;
+        let adj = widgets._scroll.vadjustment();
+        let scroll_top = adj.value();
+
         for (i, plugin) in self.plugins.iter().enumerate() {
             let mut shortcuts = Vec::new();
-            for _ in plugin.matches.iter() {
-                count += 1;
-                if count <= 10 {
-                    shortcuts.push(Some(count));
+            for m in plugin.matches.iter() {
+                if !m.row.get_visible() {
+                    shortcuts.push(None);
+                    continue;
+                }
+
+                // A match is only given a shortcut if it's below or at the current scroll top
+                // We use compute_bounds relative to the plugins container to get the absolute Y within the scroll area
+                let is_eligible = if let Some(bounds) = m.row.compute_bounds(&widgets.plugins) {
+                    let y = bounds.y() as f64;
+                    // If the row's bottom is below the scroll top, it's visible in viewport
+                    y + (bounds.height() as f64) > scroll_top
+                } else {
+                    // Fallback if bounds can't be computed
+                    true
+                };
+
+                if is_eligible {
+                    count += 1;
+                    if count <= 10 {
+                        shortcuts.push(Some(count));
+                    } else {
+                        shortcuts.push(None);
+                    }
                 } else {
                     shortcuts.push(None);
                 }
@@ -262,6 +286,14 @@ impl Component for App {
                     set_vexpand: true,
                     set_hexpand: true,
                     set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
+
+                    connect_realize[sender] => move |scroll| {
+                        let adj = scroll.vadjustment();
+                        let sender = sender.clone();
+                        adj.connect_value_changed(move |_| {
+                            sender.input(AppMsg::SyncShortcuts);
+                        });
+                    },
 
                     #[local]
                     plugins -> gtk::Box {
@@ -516,9 +548,29 @@ impl Component for App {
                         _ => None,
                     };
                     if let Some(n) = digit {
+                        let adj = widgets._scroll.vadjustment();
+                        let scroll_top = adj.value();
+
                         let matches = self.combined_matches();
-                        if n <= matches.len() {
-                            self.selected_index = n - 1;
+                        let eligible_matches: Vec<_> = matches
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, (_, m))| {
+                                if !m.row.get_visible() {
+                                    return false;
+                                }
+                                if let Some(bounds) = m.row.compute_bounds(&widgets.plugins) {
+                                    let y = bounds.y() as f64;
+                                    y + (bounds.height() as f64) > scroll_top
+                                } else {
+                                    true
+                                }
+                            })
+                            .collect();
+
+                        if n <= eligible_matches.len() {
+                            let (global_idx, _) = eligible_matches[n - 1];
+                            self.selected_index = global_idx;
                             sender.input(AppMsg::Action(Action::Select));
                             return;
                         }
@@ -568,21 +620,43 @@ impl Component for App {
                         }
                     }
                     Action::Down | Action::Up => {
-                        // Compute len without allocating a full Vec
-                        let len: usize = self.plugins.iter().map(|p| p.matches.len()).sum();
-                        if len == 0 {
-                            return;
-                        }
+                        let global_idx = {
+                            let matches = self.combined_matches();
+                            let visible_matches: Vec<_> = matches
+                                .iter()
+                                .enumerate()
+                                .filter(|(_, (_, m))| m.row.get_visible())
+                                .collect();
 
-                        if matches!(action, Action::Down) {
-                            self.selected_index = (self.selected_index + 1) % len;
-                        } else {
-                            self.selected_index = if self.selected_index == 0 {
-                                len - 1
-                            } else {
-                                self.selected_index - 1
+                            if visible_matches.is_empty() {
+                                return;
+                            }
+
+                            // Find current visible index
+                            let current_visible_idx = visible_matches
+                                .iter()
+                                .position(|(idx, _)| *idx == self.selected_index);
+
+                            let next_visible_idx = match current_visible_idx {
+                                Some(idx) => {
+                                    if matches!(action, Action::Down) {
+                                        (idx + 1) % visible_matches.len()
+                                    } else {
+                                        if idx == 0 {
+                                            visible_matches.len() - 1
+                                        } else {
+                                            idx - 1
+                                        }
+                                    }
+                                }
+                                None => 0,
                             };
-                        }
+
+                            let (global_idx, _) = visible_matches[next_visible_idx];
+                            global_idx
+                        };
+
+                        self.selected_index = global_idx;
 
                         let matches = self.combined_matches();
                         self.selected_plugin_index = self.sync_ui_selection(widgets, &matches);
@@ -746,7 +820,7 @@ impl Component for App {
                     self.plugins.broadcast(PluginBoxInput::MaybeHide);
                 }
 
-                self.sync_shortcuts();
+                self.sync_shortcuts(widgets);
             }
             AppMsg::PluginOutput(PluginBoxOutput::RowSelected(index, row_idx)) => {
                 for (i, plugin) in self.plugins.iter().enumerate() {
@@ -768,6 +842,9 @@ impl Component for App {
                     }
                     self.selected_index = global_idx + row_idx;
                 }
+            }
+            AppMsg::SyncShortcuts => {
+                self.sync_shortcuts(widgets);
             }
             AppMsg::Activate(invocation) => {
                 self.invocation = invocation;
