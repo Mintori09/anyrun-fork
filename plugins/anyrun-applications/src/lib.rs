@@ -205,10 +205,6 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
     let input_lc = input.to_lowercase();
     let input_trimmed = input_lc.trim();
 
-    if input_trimmed.is_empty() {
-        return RVec::new();
-    }
-
     let matcher = fuzzy_matcher::skim::SkimMatcherV2::default();
     let tokens: Vec<&str> = input_trimmed.split_whitespace().collect();
     const ACTION_VERBS: &[&str] = &["quit", "close", "exit", "kill", "stop", "restart"];
@@ -219,27 +215,33 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
         .iter()
         .filter_map(|se| {
             let mut score = 0;
-            for token in &tokens {
-                let s_title = matcher.fuzzy_match(&se.title_lc, token).unwrap_or(0);
-                let s_name = matcher.fuzzy_match(&se.name_lc, token).unwrap_or(0);
-                let s_desc = se
-                    .desc_lc
-                    .as_ref()
-                    .and_then(|d| matcher.fuzzy_match(d, token))
-                    .unwrap_or(0);
-                let s_key = se
-                    .keywords_lc
-                    .iter()
-                    .filter_map(|k| matcher.fuzzy_match(k, token))
-                    .max()
-                    .unwrap_or(0);
+            if !tokens.is_empty() {
+                for token in &tokens {
+                    let s_title = matcher.fuzzy_match(&se.title_lc, token).unwrap_or(0);
+                    let s_name = matcher.fuzzy_match(&se.name_lc, token).unwrap_or(0);
+                    let s_desc = se
+                        .desc_lc
+                        .as_ref()
+                        .and_then(|d| matcher.fuzzy_match(d, token))
+                        .unwrap_or(0);
+                    let s_key = se
+                        .keywords_lc
+                        .iter()
+                        .filter_map(|k| matcher.fuzzy_match(k, token))
+                        .max()
+                        .unwrap_or(0);
 
-                let best = s_title.max(s_name).max(s_desc).max(s_key);
-                if best == 0 {
-                    return None;
+                    let best = s_title.max(s_name).max(s_desc).max(s_key);
+                    if best == 0 {
+                        return None;
+                    }
+
+                    score += s_title * 10 + s_name * 8 + s_desc * 5 + s_key * 3;
                 }
-
-                score += s_title * 10 + s_name * 8 + s_desc * 5 + s_key * 3;
+            } else {
+                // If input is empty, return neutral score
+                // Anyrun-provider will handle sorting by frecency globally
+                score = 1;
             }
 
             score -= se.offset;
@@ -264,7 +266,7 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
 
     scored_results
         .into_iter()
-        .take(state.config.max_entries)
+        .take(state.config.max_entries.max(50)) // Return enough for provider to re-sort
         .map(|(id, _)| {
             let entry = &state.entry_map[&id];
             make_match(entry, id, &state.config)

@@ -36,6 +36,10 @@ test-plugins:
         cargo test --manifest-path "$$toml"; \
     done
 
+install:
+    sudo cp ./target/release/anyrun /usr/bin
+    sudo cp ./target/release/anyrun-provider /usr/bin
+
 clean:
     cargo clean
 
