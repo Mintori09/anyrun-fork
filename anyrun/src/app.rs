@@ -5,8 +5,10 @@ use crate::{
 };
 use anyrun_interface::HandleResult;
 use anyrun_provider_ipc as ipc;
-use gtk::{gdk, gio, glib, prelude::*};
+use gtk::{gdk, gio, glib};
 use gtk4 as gtk;
+use libadwaita as adw;
+use adw::prelude::*;
 use gtk4_layer_shell::{Edge, LayerShell};
 use relm4::{prelude::*, ComponentBuilder, ComponentController, Sender};
 use serde::{Deserialize, Serialize};
@@ -74,6 +76,7 @@ pub struct App {
     config_dir: Option<String>,
     is_daemon: bool,
     search_cancellable: Option<gio::Cancellable>,
+    height_animation: Option<adw::TimedAnimation>,
 }
 
 impl App {
@@ -399,6 +402,7 @@ impl Component for App {
             selected_plugin_index: None,
             is_daemon: daemon_context.is_some(),
             search_cancellable: None,
+            height_animation: None,
         };
 
         if model.is_daemon {
@@ -427,10 +431,40 @@ impl Component for App {
                     widgets._scroll.set_max_content_height(0);
                     widgets._scroll.set_visible(false);
                 } else {
-                    let max_height = self.config.max_height.to_val(mon_height);
-                    widgets._scroll.set_max_content_height(max_height);
-                    widgets._scroll.set_min_content_height(max_height);
+                    let target_height = self.config.max_height.to_val(mon_height);
                     widgets._scroll.set_visible(true);
+
+                    if let Some(anim) = self.height_animation.take() {
+                        anim.pause();
+                    }
+
+                    let target = adw::CallbackAnimationTarget::new(glib::clone!(
+                        #[weak(rename_to = scroll)]
+                        widgets._scroll,
+                        move |value| {
+                            let val = value as i32;
+                            let old_max = scroll.max_content_height();
+                            if val > old_max {
+                                scroll.set_max_content_height(val);
+                                scroll.set_min_content_height(val);
+                            } else {
+                                scroll.set_min_content_height(val);
+                                scroll.set_max_content_height(val);
+                            }
+                        }
+                    ));
+
+                    let anim = adw::TimedAnimation::builder()
+                        .widget(&widgets._scroll)
+                        .duration(200)
+                        .easing(adw::Easing::EaseOutQuart)
+                        .value_from(0.0)
+                        .value_to(target_height as f64)
+                        .target(&target)
+                        .build();
+
+                    anim.play();
+                    self.height_animation = Some(anim);
                 }
 
                 let width = self.config.width.to_val(mon_width);
@@ -589,37 +623,126 @@ impl Component for App {
                 });
             }
             AppMsg::PluginOutput(PluginBoxOutput::MatchesLoaded) => {
-                let matches = self.combined_matches();
-                if matches.is_empty() {
-                    widgets._scroll.set_min_content_height(0);
-                    widgets._scroll.set_max_content_height(0);
-                    widgets._scroll.set_visible(false);
+                let is_empty = self.plugins.iter().all(|p| p.matches.is_empty());
+                let max_entries = self.config.max_entries;
+
+                if let Some(max_entries) = max_entries {
+                    let matches = self.combined_matches();
+                    for (_plugin, plugin_match) in matches.iter().skip(max_entries as usize) {
+                        plugin_match.row.set_visible(false);
+                    }
+                }
+
+                if is_empty {
+                    if let Some(anim) = self.height_animation.take() {
+                        anim.pause();
+                    }
+
+                    let current_height = widgets._scroll.min_content_height();
+
+                    if current_height > 0 {
+                        let target = adw::CallbackAnimationTarget::new(glib::clone!(
+                            #[weak(rename_to = scroll)]
+                            widgets._scroll,
+                            move |value| {
+                            let val = value as i32;
+                            let old_max = scroll.max_content_height();
+                            if val > old_max {
+                                scroll.set_max_content_height(val);
+                                scroll.set_min_content_height(val);
+                            } else {
+                                scroll.set_min_content_height(val);
+                                scroll.set_max_content_height(val);
+                            }
+                            if val <= 0 {
+                                scroll.set_visible(false);
+                            }
+                        }
+                        ));
+
+                        let anim = adw::TimedAnimation::builder()
+                            .widget(&widgets._scroll)
+                            .duration(200)
+                            .easing(adw::Easing::EaseOutQuart)
+                            .value_from(current_height as f64)
+                            .value_to(0.0)
+                            .target(&target)
+                            .build();
+
+                        anim.play();
+                        self.height_animation = Some(anim);
+                    } else {
+                        widgets._scroll.set_min_content_height(0);
+                        widgets._scroll.set_max_content_height(0);
+                        widgets._scroll.set_visible(false);
+                    }
                 } else {
-                    // Use a reasonable height or the configured max_height
-                    // We need to know the monitor height to calculate max_height.
-                    // For now, let's try to get it from the window surface if possible, 
-                    // or just use a fallback if not yet shown.
                     let mon_height = if let Some(surface) = root.surface() {
                         let display = root.upcast_ref::<gtk::Widget>().display();
-                        display.monitor_at_surface(&surface).map(|m| m.geometry().height()).unwrap_or(1080)
+                        display
+                            .monitor_at_surface(&surface)
+                            .map(|m| m.geometry().height())
+                            .unwrap_or(1080)
                     } else {
                         1080
                     } as u32;
-                    
+
                     let max_height = self.config.max_height.to_val(mon_height);
-                    widgets._scroll.set_max_content_height(max_height);
-                    widgets._scroll.set_min_content_height(max_height);
+
+                    // Calculate the natural height of the content
+                    // We use the plugins box which contains all plugin boxes
+                    let (_, natural_height) = widgets.plugins.preferred_size();
+                    let target_height = natural_height.height().min(max_height);
+
                     widgets._scroll.set_visible(true);
+
+                    if let Some(anim) = self.height_animation.take() {
+                        anim.pause();
+                    }
+
+                    let current_height = widgets._scroll.min_content_height();
+
+                    // If the change is small, don't animate to avoid jitter
+                    if (current_height - target_height).abs() < 2 {
+                        widgets._scroll.set_min_content_height(target_height);
+                        widgets._scroll.set_max_content_height(target_height);
+                    } else {
+                        let target = adw::CallbackAnimationTarget::new(glib::clone!(
+                            #[weak(rename_to = scroll)]
+                            widgets._scroll,
+                            move |value| {
+                            let val = value as i32;
+                            let old_max = scroll.max_content_height();
+                            if val > old_max {
+                                scroll.set_max_content_height(val);
+                                scroll.set_min_content_height(val);
+                            } else {
+                                scroll.set_min_content_height(val);
+                                scroll.set_max_content_height(val);
+                            }
+                        }
+                        ));
+
+                        let anim = adw::TimedAnimation::builder()
+                            .widget(&widgets._scroll)
+                            .duration(200)
+                            .easing(adw::Easing::EaseOutQuart)
+                            .value_from(current_height as f64)
+                            .value_to(target_height as f64)
+                            .target(&target)
+                            .build();
+
+                        anim.play();
+                        self.height_animation = Some(anim);
+                    }
                 }
 
+                let matches = self.combined_matches();
                 if let Some((plugin, plugin_match)) = matches.first() {
                     plugin.matches.widget().select_row(Some(&plugin_match.row));
                 }
 
-                if let Some(max_entries) = self.config.max_entries {
-                    for (_plugin, plugin_match) in matches.iter().skip(max_entries as usize) {
-                        plugin_match.row.set_visible(false);
-                    }
+                if max_entries.is_some() {
                     self.plugins.broadcast(PluginBoxInput::MaybeHide);
                 }
 

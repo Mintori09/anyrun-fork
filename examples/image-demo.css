@@ -60,7 +60,6 @@ list.plugin {
 
 /* Match layout adjustments */
 box.match {
-  spacing: 12px;
 }
 
 label.match.title {
