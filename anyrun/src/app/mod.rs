@@ -252,6 +252,7 @@ impl Component for App {
             is_daemon: daemon_context.is_some(),
             search_cancellable: None,
             height_animation: None,
+            last_css_load: Some(std::time::SystemTime::now()),
         };
 
         if model.is_daemon {

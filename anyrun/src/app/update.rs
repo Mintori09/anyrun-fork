@@ -92,11 +92,7 @@ impl App {
                             }
                             root.application().unwrap().quit();
                         }
-                        // Unload the style so a new one can be loaded on next show
-                        gtk::style_context_remove_provider_for_display(
-                            &gtk::prelude::WidgetExt::display(root),
-                            &self.css_provider,
-                        );
+
                         if self.is_daemon {
                             root.set_visible(false);
                             self.invocation = None;

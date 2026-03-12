@@ -110,23 +110,26 @@ impl App {
         // Re-load CSS if in daemon mode to support hot-reload
         if self.is_daemon {
             if let Some(config_dir) = &self.config_dir {
-                match fs::read_to_string(format!("{config_dir}/style.css")) {
-                    Ok(style) => {
-                        self.css_provider.load_from_string(&style);
+                let path = format!("{config_dir}/style.css");
+                if let Ok(metadata) = fs::metadata(&path) {
+                    let should_reload = match (metadata.modified(), self.last_css_load) {
+                        (Ok(m), Some(last)) => m > last,
+                        _ => true,
+                    };
+
+                    if should_reload {
+                        if let Ok(style) = fs::read_to_string(&path) {
+                            self.css_provider.load_from_string(&style);
+                            self.last_css_load = Some(std::time::SystemTime::now());
+                        }
                     }
-                    Err(_) => {
-                        self.css_provider.load_from_string(DEFAULT_CSS);
-                    }
+                } else if self.last_css_load.is_none() {
+                    // Only load default if we haven't loaded anything yet
+                    self.css_provider.load_from_string(DEFAULT_CSS);
+                    self.last_css_load = Some(std::time::SystemTime::now());
                 }
             }
         }
-
-        // Re-apply style provider because it might have been removed on Close
-        gtk::style_context_add_provider_for_display(
-            &gtk::prelude::WidgetExt::display(root),
-            &self.css_provider,
-            gtk::STYLE_PROVIDER_PRIORITY_USER,
-        );
 
         root.set_visible(true);
         widgets.entry().grab_focus_without_selecting();
