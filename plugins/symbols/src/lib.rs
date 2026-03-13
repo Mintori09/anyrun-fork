@@ -1,11 +1,9 @@
-use std::{collections::HashMap, fs};
-
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::*;
 use fuzzy_matcher::FuzzyMatcher;
 use serde::Deserialize;
-
-include!(concat!(env!("OUT_DIR"), "/unicode.rs"));
+use std::collections::HashMap;
+use std::fs;
 
 #[derive(Clone, Debug)]
 struct Symbol {
@@ -16,40 +14,71 @@ struct Symbol {
 #[derive(Deserialize, Debug)]
 struct Config {
     prefix: String,
+    #[serde(default)]
     symbols: HashMap<String, String>,
+    #[serde(default = "default_max_entries")]
     max_entries: usize,
+}
+
+fn default_max_entries() -> usize {
+    10
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            prefix: "".to_string(),
+            prefix: "icon".to_string(),
             symbols: HashMap::new(),
-            max_entries: 3,
+            max_entries: 5,
         }
     }
 }
 
-struct State {
+pub struct State {
     config: Config,
     symbols: Vec<Symbol>,
 }
 
 #[init]
 fn init(config_dir: RString) -> State {
-    // Try to load the config file, if it does not exist only use the static unicode characters
-    let config = if let Ok(content) = fs::read_to_string(format!("{}/symbols.ron", config_dir)) {
-        ron::from_str(&content).unwrap_or_default()
-    } else {
-        Config::default()
-    };
+    let config: Config = fs::read_to_string(format!("{}/symbols.ron", config_dir))
+        .ok()
+        .and_then(|content| ron::from_str(&content).ok())
+        .unwrap_or_default();
 
-    let symbols = UNICODE_CHARS
-        .iter()
-        .map(|(name, chr)| (name.to_string(), chr.to_string()))
-        .chain(config.symbols.clone().into_iter())
-        .map(|(name, chr)| Symbol { chr, name })
-        .collect();
+    let mut symbols = Vec::new();
+
+    // 1. Add icons from icons.ron
+    let icons_str = include_str!("../res/icons.ron");
+    if let Ok(icons) = ron::from_str::<HashMap<String, String>>(icons_str) {
+        for (name, chr) in icons {
+            symbols.push(Symbol { name, chr });
+        }
+    }
+
+    // 2. Add unicode characters from UnicodeData.txt
+    let unicode_data = include_str!("../res/UnicodeData.txt");
+    for line in unicode_data.lines() {
+        let mut fields = line.split(';');
+        let hex = fields.next().unwrap_or_default();
+        let name = fields.next().unwrap_or_default();
+
+        if !name.is_empty() && name != "<control>" {
+            if let Ok(code) = u32::from_str_radix(hex, 16) {
+                if let Some(chr) = std::char::from_u32(code) {
+                    symbols.push(Symbol {
+                        name: name.to_string(),
+                        chr: chr.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    // 3. Add custom symbols from config
+    for (name, chr) in config.symbols.clone() {
+        symbols.push(Symbol { name, chr });
+    }
 
     State { config, symbols }
 }
@@ -64,32 +93,36 @@ fn info() -> PluginInfo {
 
 #[get_matches]
 fn get_matches(input: RString, state: &State) -> RVec<Match> {
-    let input = if let Some(input) = input.strip_prefix(&state.config.prefix) {
-        input.trim()
+    let input = if state.config.prefix.is_empty() {
+        input.as_str()
     } else {
-        return RVec::new();
+        if let Some(stripped) = input.strip_prefix(&state.config.prefix) {
+            stripped.trim()
+        } else {
+            return RVec::new();
+        }
     };
+
+    if input.is_empty() {
+        return RVec::new();
+    }
+
     let matcher = fuzzy_matcher::skim::SkimMatcherV2::default().ignore_case();
-    let mut symbols = state
+
+    let mut matches: Vec<(&Symbol, i64)> = state
         .symbols
         .iter()
-        .filter_map(|symbol| {
-            matcher
-                .fuzzy_match(&symbol.name, input)
-                .map(|score| (symbol, score))
-        })
-        .collect::<Vec<_>>();
+        .filter_map(|s| matcher.fuzzy_match(&s.name, input).map(|score| (s, score)))
+        .collect();
 
-    // Sort the symbol list according to the score
-    symbols.sort_by(|a, b| b.1.cmp(&a.1));
+    matches.sort_by(|a, b| b.1.cmp(&a.1));
 
-    symbols.truncate(state.config.max_entries);
-
-    symbols
+    matches
         .into_iter()
-        .map(|(symbol, _)| Match {
-            title: symbol.chr.clone().into(),
-            description: ROption::RSome(symbol.name.clone().into()),
+        .take(state.config.max_entries)
+        .map(|(s, _)| Match {
+            title: s.chr.clone().into(),
+            description: ROption::RSome(s.name.clone().into()),
             use_pango: false,
             icon: ROption::RNone,
             id: ROption::RNone,
