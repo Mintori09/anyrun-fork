@@ -5,13 +5,13 @@ mod validate;
 
 use abi_stable::std_types::ROption::{RNone, RSome};
 use abi_stable::std_types::{RString, RVec};
-use anyrun_helper::get_clipboard;
 use anyrun_plugin::*;
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use serde::Deserialize;
 use std::fs::{self};
 use std::path::PathBuf;
+use std::sync::RwLock;
 
 use crate::action::model::{ActionTarget, InputCategory, UniversalAction};
 use crate::registry::get_internal_actions;
@@ -40,11 +40,11 @@ fn default_max_entries() -> usize {
 }
 
 pub struct State {
-    filetype: InputCategory,
+    filetype: RwLock<InputCategory>,
     config: Config,
     actions: Vec<UniversalAction>,
     matcher: SkimMatcherV2,
-    clipboard: String,
+    clipboard: RwLock<String>,
 }
 
 #[init]
@@ -75,9 +75,11 @@ fn init(config_dir: RString) -> State {
 
     actions.extend(config_actions);
 
+    let (filetype, clipboard) = InputCategory::classify_clipboard();
+
     State {
-        filetype: InputCategory::classify_clipboard(),
-        clipboard: get_clipboard(),
+        filetype: RwLock::new(filetype),
+        clipboard: RwLock::new(clipboard),
         config,
         actions,
         matcher: SkimMatcherV2::default(),
@@ -100,6 +102,15 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
     };
 
     let is_initial_view = query.is_empty();
+
+    if is_initial_view {
+        let (new_filetype, new_clipboard) = InputCategory::classify_clipboard();
+        let mut filetype_lock = state.filetype.write().unwrap();
+        let mut clipboard_lock = state.clipboard.write().unwrap();
+        *filetype_lock = new_filetype;
+        *clipboard_lock = new_clipboard;
+    }
+
     let limit = if is_initial_view {
         10
     } else {
@@ -130,10 +141,13 @@ fn filter_and_score_actions<'a>(
     is_initial_view: bool,
 ) -> Vec<(i64, &'a UniversalAction)> {
     let query = query.trim_end();
+    let clipboard = state.clipboard.read().unwrap();
+    let filetype = state.filetype.read().unwrap();
+
     state
         .actions
         .iter()
-        .filter(|action| action.is_match(&state.clipboard, state.filetype.clone()))
+        .filter(|action| action.is_match(&clipboard, filetype.clone()))
         .filter_map(|action| {
             if is_initial_view {
                 Some((0, action))
@@ -152,8 +166,9 @@ fn create_matches(
     state: &State,
     limit: usize,
 ) -> RVec<Match> {
-    let icon = RSome(state.filetype.get_icon().as_str().into());
-    let description = RSome(format!("Run action for {:?}", state.filetype).into());
+    let filetype = state.filetype.read().unwrap();
+    let icon = RSome(filetype.get_icon().as_str().into());
+    let description = RSome(format!("Run action for {:?}", *filetype).into());
 
     ranked_actions
         .into_iter()
@@ -175,9 +190,11 @@ fn handler(selection: Match, state: &State) -> HandleResult {
         .iter()
         .find(|a| a.name == selection.title.to_string())
     {
+        let filetype = state.filetype.read().unwrap();
+        let clipboard = state.clipboard.read().unwrap();
         action
             .target
-            .run_action(state.filetype.clone(), &state.clipboard);
+            .run_action(filetype.clone(), &clipboard);
     }
 
     HandleResult::Close
@@ -215,9 +232,10 @@ fn test_read_config() {
 
     actions.extend(config_actions);
 
+    let (filetype, clipboard) = InputCategory::classify_clipboard();
     let state = State {
-        filetype: InputCategory::classify_clipboard(),
-        clipboard: get_clipboard(),
+        filetype: RwLock::new(filetype),
+        clipboard: RwLock::new(clipboard),
         config,
         actions,
         matcher: SkimMatcherV2::default(),

@@ -1,6 +1,3 @@
-use abi_stable::std_types::ROption::{RNone, RSome};
-use anyrun_helper::icon::SystemIcon;
-use anyrun_plugin::Match;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]

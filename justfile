@@ -40,6 +40,9 @@ install:
     sudo cp ./target/release/anyrun /usr/bin
     sudo cp ./target/release/anyrun-provider /usr/bin
 
+install-plugin:
+    cp ./target/release/*.so ~/.config/anyrun/plugins
+
 clean:
     cargo clean
 
@@ -48,3 +51,4 @@ check:
 
 default:
     just build bin
+
