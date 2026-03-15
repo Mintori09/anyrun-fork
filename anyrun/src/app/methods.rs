@@ -10,7 +10,7 @@ impl App {
         app_init: AppInit,
         invocation: Option<SendInvocation>,
         daemon_context: Option<std::sync::Arc<DaemonContext>>,
-    ) -> Sender<AppMsg> {
+    ) -> relm4::Controller<App> {
         let builder = ComponentBuilder::<App>::default();
 
         let connector = builder.launch((app_init, invocation, daemon_context));
@@ -20,7 +20,7 @@ impl App {
         app.add_window(window);
         window.set_visible(false);
         controller.detach_runtime();
-        controller.sender().clone()
+        controller
     }
 
     pub(super) fn sync_ui_selection(

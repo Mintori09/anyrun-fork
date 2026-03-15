@@ -82,8 +82,8 @@ enum Command {
 }
 
 struct DaemonState {
-    controller: relm4::Controller<app::App>,
-    provider_child: std::process::Child,
+    sender: relm4::Sender<app::AppMsg>,
+    provider_child: Option<std::process::Child>,
 }
 
 fn main() {
@@ -114,7 +114,7 @@ fn fast_ipc_call(method: &'static str) {
         None::<&gio::Cancellable>,
         move |res| {
             if let Ok(conn) = res {
-                conn.call(
+                let _ = conn.call(
                     Some("org.anyrun.anyrun"),
                     "/org/anyrun/anyrun",
                     "org.anyrun.Anyrun",
@@ -203,10 +203,62 @@ fn run_client(args: Args) {
         let shared_init = Arc::new(read_init_data());
 
         app.connect_activate(move |app| {
-            app::App::launch(app, (*shared_init).clone(), None, None);
+            let controller = app::App::launch(app, (*shared_init).clone(), None, None);
+            let state = Rc::new(RefCell::new(DaemonState {
+                sender: controller.sender().clone(),
+                provider_child: None,
+            }));
+            setup_dbus(app, state);
+            controller.sender().emit(app::AppMsg::Activate(None));
         });
         app.run_with_args(&Vec::<String>::new());
     }
+}
+
+fn setup_dbus(app: &gtk::Application, state: Rc<RefCell<DaemonState>>) {
+    let dbus_conn = match app.dbus_connection() {
+        Some(conn) => conn,
+        None => return,
+    };
+
+    let node_info = gio::DBusNodeInfo::for_xml(INTERFACE_XML).expect("Invalid XML");
+    let interface = node_info.lookup_interface("org.anyrun.Anyrun").unwrap();
+
+    let _ = dbus_conn
+        .register_object("/org/anyrun/anyrun", &interface)
+        .typed_method_call::<InterfaceMethod>()
+        .invoke(glib::clone!(
+            #[weak]
+            app,
+            #[strong]
+            state,
+            move |_, _, method, invocation| {
+                match method {
+                    InterfaceMethod::Show(show) => {
+                        match serde_json::from_slice::<app::AppInit>(&show.args) {
+                            Ok(_init_data) => {
+                                state.borrow().sender.emit(app::AppMsg::Activate(Some(app::SendInvocation(invocation))));
+                            }
+                            Err(_) => {
+                                invocation.return_error(gio::DBusError::InvalidArgs, "Invalid JSON");
+                            }
+                        }
+                    }
+                    InterfaceMethod::Close => {
+                        state.borrow().sender.emit(app::AppMsg::Action(crate::config::Action::Close));
+                        invocation.return_value(None);
+                    }
+                    InterfaceMethod::Quit => {
+                        invocation.return_value(None);
+                        if let Some(mut child) = state.borrow_mut().provider_child.take() {
+                            let _ = child.kill();
+                        }
+                        app.quit();
+                    }
+                }
+            }
+        ))
+        .build();
 }
 
 fn run_daemon(args: Args) {
@@ -303,63 +355,14 @@ fn run_daemon(args: Args) {
             .collect(),
     };
 
-    let builder = relm4::ComponentBuilder::<app::App>::default();
-    let connector = builder.launch((app_init, None, Some(context)));
-    let mut controller = connector.detach();
-    let window = controller.widget();
-    app.add_window(window);
-    window.set_visible(false);
-    controller.detach_runtime();
-
+    let controller = app::App::launch(&app, app_init, None, Some(context));
     let _hold = app.hold();
     let state = Rc::new(RefCell::new(DaemonState {
-        controller,
-        provider_child,
+        sender: controller.sender().clone(),
+        provider_child: Some(provider_child),
     }));
-    let dbus_conn = app
-        .dbus_connection()
-        .expect("Failed to get DBus connection");
 
-    let node_info = gio::DBusNodeInfo::for_xml(INTERFACE_XML).expect("Invalid XML");
-    let interface = node_info.lookup_interface("org.anyrun.Anyrun").unwrap();
-
-    dbus_conn
-        .register_object("/org/anyrun/anyrun", &interface)
-        .typed_method_call::<InterfaceMethod>()
-        .invoke(glib::clone!(
-            #[weak]
-            app,
-            #[strong]
-            state,
-            move |_, _, method, invocation| {
-                match method {
-                    InterfaceMethod::Show(show) => {
-                        match serde_json::from_slice::<app::AppInit>(&show.args) {
-                            Ok(_init_data) => {
-                                // Since it's persistent, we don't use the init_data's args/env for the component itself,
-                                // but we could pass them if needed. For now, we reuse the persistent state.
-                                // We update the sender with a new activation message.
-                                state.borrow().controller.sender().emit(app::AppMsg::Activate(Some(app::SendInvocation(invocation))));
-                            }
-                            Err(_) => {
-                                invocation.return_error(gio::DBusError::InvalidArgs, "Invalid JSON");
-                            }
-                        }
-                    }
-                    InterfaceMethod::Close => {
-                        state.borrow().controller.sender().emit(app::AppMsg::Action(crate::config::Action::Close));
-                        invocation.return_value(None);
-                    }
-                    InterfaceMethod::Quit => {
-                        invocation.return_value(None);
-                        let _ = state.borrow_mut().provider_child.kill();
-                        app.quit();
-                    }
-                }
-            }
-        ))
-        .build()
-        .expect("Failed to register object");
+    setup_dbus(&app, state);
 
     app.run_with_args(&Vec::<String>::new());
 }
