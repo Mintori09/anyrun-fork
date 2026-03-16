@@ -268,7 +268,7 @@ async fn worker(stream: UnixStream, state: &mut State) -> io::Result<WorkerResul
     Ok(WorkerResult::Continue)
 }
 
-fn find_plugin(name: &PathBuf, dirs: &[PathBuf]) -> Option<PathBuf> {
+fn find_plugin(name: &std::path::Path, dirs: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
     let name = expand_tilde(name);
     if name.is_absolute() && name.exists() {
         return Some(name.clone());
@@ -288,13 +288,12 @@ fn find_plugin(name: &PathBuf, dirs: &[PathBuf]) -> Option<PathBuf> {
     None
 }
 
-fn expand_tilde(path: &PathBuf) -> PathBuf {
-    if let Some(path_str) = path.to_str() {
-        if path_str.starts_with("~/") {
-            if let Ok(home) = env::var("HOME") {
-                return PathBuf::from(path_str.replacen('~', &home, 1));
-            }
-        }
+fn expand_tilde(path: &std::path::Path) -> std::path::PathBuf {
+    if let Some(path_str) = path.to_str()
+        && path_str.starts_with("~/")
+        && let Ok(home) = std::env::var("HOME")
+    {
+        return std::path::PathBuf::from(path_str.replacen('~', &home, 1));
     }
-    path.clone()
+    path.to_path_buf()
 }

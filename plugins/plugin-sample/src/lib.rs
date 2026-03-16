@@ -73,7 +73,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
                 .data
                 .iter()
                 .take(state.config.max_entries)
-                .map(|item| item_to_match(item))
+                .map(|s| item_to_match(s))
                 .collect::<Vec<_>>()
                 .into();
         } else {
@@ -92,14 +92,14 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
                 .all(|part| state.matcher.fuzzy_match(item, part).is_some())
         })
         .take(state.config.max_entries)
-        .map(|item| item_to_match(item))
+        .map(|s| item_to_match(s))
         .collect::<Vec<_>>()
         .into()
 }
 
-fn item_to_match(item: &String) -> Match {
+fn item_to_match(item: &str) -> Match {
     Match {
-        title: item.clone().into(),
+        title: item.to_owned().into(),
         description: ROption::RSome("Plugin".into()),
         use_pango: false,
         icon: ROption::RSome(SystemIcon::Folder.as_str().into()),
@@ -113,4 +113,4 @@ fn handler(selection: Match) -> HandleResult {
     HandleResult::Close
 }
 
-fn execute_action(selection: String) {}
+fn execute_action(_selection: String) {}

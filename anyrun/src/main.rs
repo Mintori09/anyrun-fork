@@ -114,7 +114,7 @@ fn fast_ipc_call(method: &'static str) {
         None::<&gio::Cancellable>,
         move |res| {
             if let Ok(conn) = res {
-                let _ = conn.call(
+                conn.call(
                     Some("org.anyrun.anyrun"),
                     "/org/anyrun/anyrun",
                     "org.anyrun.Anyrun",
@@ -330,7 +330,7 @@ fn run_daemon(args: Args) {
         .spawn()
         .expect("Failed to spawn anyrun-provider");
 
-    let context = Arc::new(app::DaemonContext {
+    let context = Rc::new(app::DaemonContext {
         config: Arc::new(config),
         config_dir,
         css_provider,

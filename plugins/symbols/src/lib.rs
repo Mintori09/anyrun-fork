@@ -95,12 +95,10 @@ fn info() -> PluginInfo {
 fn get_matches(input: RString, state: &State) -> RVec<Match> {
     let input = if state.config.prefix.is_empty() {
         input.as_str()
+    } else if let Some(stripped) = input.strip_prefix(&state.config.prefix) {
+        stripped.trim()
     } else {
-        if let Some(stripped) = input.strip_prefix(&state.config.prefix) {
-            stripped.trim()
-        } else {
-            return RVec::new();
-        }
+        return RVec::new();
     };
 
     if input.is_empty() {
