@@ -6,16 +6,25 @@ use fuzzy_matcher::skim::SkimMatcherV2;
 use serde::Deserialize;
 use std::{fs, process::Command};
 
+use std::sync::RwLock;
+use std::time::{Duration, Instant};
+
 pub struct State {
     config: Config,
     matcher: SkimMatcherV2,
-    zoxide: Vec<String>,
+    zoxide: RwLock<(Instant, Vec<String>)>,
 }
 
 #[derive(Deserialize)]
 struct Config {
     prefix: String,
     max_entries: usize,
+    #[serde(default = "default_cache_ttl")]
+    cache_ttl_secs: u64,
+}
+
+fn default_cache_ttl() -> u64 {
+    30
 }
 
 impl Default for Config {
@@ -23,6 +32,7 @@ impl Default for Config {
         Config {
             prefix: "z ".into(),
             max_entries: 5,
+            cache_ttl_secs: default_cache_ttl(),
         }
     }
 }
@@ -39,7 +49,7 @@ fn init(config_dir: RString) -> State {
     State {
         config,
         matcher: SkimMatcherV2::default(),
-        zoxide: get_all_zoxide_paths(),
+        zoxide: RwLock::new((Instant::now(), get_all_zoxide_paths())),
     }
 }
 
@@ -57,6 +67,17 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
         return RVec::new();
     }
 
+    let needs_update = {
+        let cache = state.zoxide.read().unwrap();
+        cache.0.elapsed() > Duration::from_secs(state.config.cache_ttl_secs)
+    };
+
+    if needs_update {
+        let paths = get_all_zoxide_paths();
+        let mut cache = state.zoxide.write().unwrap();
+        *cache = (Instant::now(), paths);
+    }
+
     let query_str = &input[state.config.prefix.len()..];
     if query_str.is_empty() {
         return RVec::new();
@@ -64,8 +85,9 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
 
     let query_parts: Vec<&str> = query_str.split_whitespace().collect();
 
-    state
-        .zoxide
+    let cache = state.zoxide.read().unwrap();
+    cache
+        .1
         .iter()
         .filter(|path| {
             // "Just find": Check if all query parts exist in the path

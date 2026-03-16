@@ -30,13 +30,17 @@ impl Default for Config {
 
 pub struct State {
     config: Config,
+    runtime: Runtime,
 }
 
 #[init]
 fn init(config_dir: RString) -> State {
     let config_path = PathBuf::from(config_dir.to_string()).join(PLUGIN_NAME);
     let config = load_config(config_path);
-    State { config }
+    State {
+        config,
+        runtime: Runtime::new().expect("Failed to create tokio runtime"),
+    }
 }
 
 fn load_config(path: PathBuf) -> Config {
@@ -60,8 +64,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
         return RVec::new();
     }
 
-    let rt = Runtime::new().expect("Failed to create Tokio runtime");
-    rt.block_on(async {
+    state.runtime.block_on(async {
         let mut matches = Vec::new();
         if let Ok(session) = Session::new().await
             && let Ok(adapter) = session.default_adapter().await
@@ -125,11 +128,10 @@ async fn populate_adapter_actions(adapter: &Adapter, matches: &mut Vec<Match>) {
 }
 
 #[handler]
-fn handler(selection: Match) -> HandleResult {
+fn handler(selection: Match, state: &State) -> HandleResult {
     let id = selection.id.unwrap_or(0);
-    let rt = Runtime::new().expect("Failed to create Tokio runtime");
 
-    rt.block_on(async {
+    state.runtime.block_on(async {
         if let Ok(session) = Session::new().await
             && let Ok(adapter) = session.default_adapter().await
         {
