@@ -46,11 +46,13 @@ impl Default for Config {
     }
 }
 
+use std::sync::RwLock;
+
 pub struct State {
     config: Config,
     connection: Connection,
     matcher: SkimMatcherV2,
-    cached_history: std::sync::Mutex<(Instant, Vec<String>)>,
+    cached_history: RwLock<(Instant, Vec<String>)>,
 }
 
 #[init]
@@ -62,7 +64,7 @@ fn init(config_dir: RString) -> State {
     let connection = Connection::session().expect("Failed to connect to D-Bus");
 
     let cached_history =
-        std::sync::Mutex::new((Instant::now() - Duration::from_secs(60), Vec::new()));
+        RwLock::new((Instant::now() - Duration::from_secs(60), Vec::new()));
 
     State {
         config,
@@ -88,18 +90,26 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
         None => return RVec::new(),
     };
 
-    let mut cache = state.cached_history.lock().unwrap();
+    let needs_update = {
+        let cache = state.cached_history.read().unwrap();
+        cache.0.elapsed() > Duration::from_millis(1000)
+    };
 
-    if cache.0.elapsed() > Duration::from_millis(1000) {
+    if needs_update {
         let new_data = KlipperProxy::new(&state.connection)
             .ok()
             .and_then(|proxy| proxy.get_clipboard_history_menu().ok());
 
         if let Some(data) = new_data {
+            let mut cache = state.cached_history.write().unwrap();
             *cache = (Instant::now(), data);
         }
     }
-    let history = cache.1.clone();
+
+    let history = {
+        let cache = state.cached_history.read().unwrap();
+        cache.1.clone()
+    };
 
     let mut results: Vec<(i64, String)> = history
         .into_iter()

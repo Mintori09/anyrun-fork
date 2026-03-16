@@ -6,7 +6,7 @@ use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use serde::Deserialize;
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::time::{Duration, Instant};
 use std::{fs, path::PathBuf};
 
@@ -31,7 +31,7 @@ impl Default for Config {
 pub struct State {
     config: Config,
     matcher: SkimMatcherV2,
-    cache: Mutex<Option<(Instant, Vec<KdeWindow>)>>,
+    cache: RwLock<Option<(Instant, Vec<KdeWindow>)>>,
 }
 
 #[derive(Debug, Clone)]
@@ -88,7 +88,7 @@ fn init(config_dir: RString) -> State {
     State {
         config,
         matcher: SkimMatcherV2::default().smart_case(),
-        cache: Mutex::new(None),
+        cache: RwLock::new(None),
     }
 }
 
@@ -101,18 +101,23 @@ fn info() -> PluginInfo {
 }
 
 fn get_windows_with_cache(state: &State) -> Vec<KdeWindow> {
-    let mut cache = state.cache.lock().unwrap();
+    let needs_update = {
+        let cache = state.cache.read().unwrap();
+        match *cache {
+            Some((inst, _)) => inst.elapsed() >= Duration::from_secs(state.config.cache_ttl_secs),
+            None => true,
+        }
+    };
 
-    if let Some((_, windows)) = cache
-        .as_ref()
-        .filter(|(inst, _)| inst.elapsed() < Duration::from_secs(state.config.cache_ttl_secs))
-    {
-        return windows.clone();
+    if needs_update {
+        let windows = get_kde_windows();
+        let mut cache = state.cache.write().unwrap();
+        *cache = Some((Instant::now(), windows.clone()));
+        windows
+    } else {
+        let cache = state.cache.read().unwrap();
+        cache.as_ref().unwrap().1.clone()
     }
-
-    let windows = get_kde_windows();
-    *cache = Some((Instant::now(), windows.clone()));
-    windows
 }
 
 #[get_matches]

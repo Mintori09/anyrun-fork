@@ -192,9 +192,7 @@ fn handler(selection: Match, state: &State) -> HandleResult {
     {
         let filetype = state.filetype.read().unwrap();
         let clipboard = state.clipboard.read().unwrap();
-        action
-            .target
-            .run_action(filetype.clone(), &clipboard);
+        action.target.run_action(filetype.clone(), &clipboard);
     }
 
     HandleResult::Close

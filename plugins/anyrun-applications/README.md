@@ -1,37 +1,47 @@
-# Applications (fuzzy matcher)
+# anyrun-applications
 
-Launch applications.
+Plugin này cho phép bạn tìm kiếm và khởi chạy các ứng dụng từ các file desktop entry trên hệ thống của bạn.
 
-## Usage
+## Tính năng
 
-Simply search for the application you wish to launch.
+- Tìm kiếm mờ (fuzzy search) tên ứng dụng, mô tả và từ khóa.
+- Hỗ trợ các hành động desktop (Desktop Actions).
+- Tích hợp các lệnh hệ thống nhanh: Tắt máy, Khởi động lại, Khóa màn hình, v.v.
+- Hỗ trợ chạy ứng dụng trong terminal.
+- Cho phép xử lý lệnh thực thi thông qua script tùy chỉnh.
 
-_NOTE: The applications plugin does not look for executables in your $PATH, it looks for [desktop entries](https://specifications.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html) in standard locations (`XDG_DATA_DIRS`)._
+## Cách sử dụng
 
-## Configuration
+Plugin này hoạt động mặc định mà không cần tiền tố (prefix). Chỉ cần nhập tên ứng dụng bạn muốn tìm.
+
+## Phụ thuộc
+
+- `anyrun`
+- Các file `.desktop` chuẩn (thường ở `/usr/share/applications` và `~/.local/share/applications`)
+
+## Cấu hình
+
+File cấu hình: `applications.ron`
 
 ```ron
-// <Anyrun config dir>/applications.ron
 Config(
-  // Also show the Desktop Actions defined in the desktop files, e.g. "New Window" from LibreWolf
   desktop_actions: true,
-
   max_entries: 5,
-
-  hide_description: true,
-
-  // A command to preprocess the command from the desktop file. The commands should take arguments in this order:
-  // command_name <term|no-term> <command>
-  preprocess_exec_script: Some("/home/user/.local/share/anyrun/preprocess_application_command.sh")
-
-  // The terminal used for running terminal based desktop entries, if left as `None` a static list of terminals is used
-  // to determine what terminal to use.
+  hide_description: false,
+  // Tùy chọn terminal để chạy các ứng dụng yêu cầu terminal
   terminal: Some(Terminal(
-    // The main terminal command
     command: "alacritty",
-    // What arguments should be passed to the terminal process to run the command correctly
-    // {} is replaced with the command in the desktop entry
     args: "-e {}",
   )),
+  // Tùy chọn script tiền xử lý lệnh thực thi
+  // preprocess_exec_script: Some("/path/to/script.sh"),
 )
 ```
+
+### Các trường cấu hình:
+
+- `desktop_actions`: (bool) Có hiển thị các hành động bổ sung của ứng dụng hay không.
+- `max_entries`: (usize) Số lượng kết quả tối đa hiển thị.
+- `hide_description`: (bool) Ẩn mô tả ứng dụng.
+- `terminal`: (Option) Cấu hình terminal để chạy ứng dụng.
+- `preprocess_exec_script`: (Option) Đường dẫn tới script xử lý chuỗi lệnh thực thi trước khi chạy.
