@@ -92,7 +92,7 @@ impl InputCategory {
                 "xml" => "xml".into(),
                 "yaml" => "yaml".into(),
                 "ron" => "ron".into(),
-                _ => format!("{}", lang),
+                _ => lang.to_string(),
             },
             Self::System { kind } => match kind.as_str() {
                 "path" => "path".into(),

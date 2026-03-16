@@ -1,15 +1,15 @@
 use crate::plugin_box::{PluginBox, PluginBoxInput, PluginMatch};
 use gtk4 as gtk;
 use gtk::prelude::*;
-use relm4::{prelude::*, ComponentBuilder, ComponentController, Sender};
-use super::{App, AppInit, AppMsg, DaemonContext, SendInvocation, AppWidgets};
+use relm4::{ComponentBuilder, ComponentController};
+use super::{App, AppInit, DaemonContext, SendInvocation, AppWidgets};
 
 impl App {
     pub fn launch(
         app: &gtk::Application,
         app_init: AppInit,
         invocation: Option<SendInvocation>,
-        daemon_context: Option<std::sync::Arc<DaemonContext>>,
+        daemon_context: Option<std::rc::Rc<DaemonContext>>,
     ) -> relm4::Controller<App> {
         let builder = ComponentBuilder::<App>::default();
 

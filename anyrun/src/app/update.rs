@@ -127,12 +127,10 @@ impl App {
                                 Some(idx) => {
                                     if matches!(action, Action::Down) {
                                         (idx + 1) % visible_matches.len()
+                                    } else if idx == 0 {
+                                        visible_matches.len() - 1
                                     } else {
-                                        if idx == 0 {
-                                            visible_matches.len() - 1
-                                        } else {
-                                            idx - 1
-                                        }
+                                        idx - 1
                                     }
                                 }
                                 None => 0,

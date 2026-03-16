@@ -9,19 +9,19 @@ pub use types::*;
 
 use crate::{
     config::{self, Config},
-    plugin_box::PluginBox,
     provider,
 };
-use anyrun_provider_ipc as ipc;
-use gtk::{gio, glib};
-use gtk4 as gtk;
-use libadwaita as adw;
 use adw::prelude::*;
+use anyrun_provider_ipc as ipc;
+use gtk::glib;
+use gtk4 as gtk;
 use gtk4_layer_shell::LayerShell;
+use libadwaita as adw;
 use relm4::prelude::*;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -29,7 +29,7 @@ use tokio::sync::mpsc;
 impl Component for App {
     type Input = AppMsg;
     type Output = ();
-    type Init = (AppInit, Option<SendInvocation>, Option<Arc<DaemonContext>>);
+    type Init = (AppInit, Option<SendInvocation>, Option<Rc<DaemonContext>>);
     type CommandOutput = anyrun_provider_ipc::Response;
 
     view! {
@@ -228,12 +228,10 @@ impl Component for App {
                     if let Err(why) = provider::worker_connect(socket_path, rx, sender) {
                         eprintln!("[anyrun] IPC worker failed to connect: {why}");
                     }
-                } else {
-                    if let Err(why) =
-                        provider::worker_spawn(config, config_dir, rx, sender, stdin, env)
-                    {
-                        eprintln!("[anyrun] IPC worker returned an error: {why}");
-                    }
+                } else if let Err(why) =
+                    provider::worker_spawn(config, config_dir, rx, sender, stdin, env)
+                {
+                    eprintln!("[anyrun] IPC worker returned an error: {why}");
                 }
             }
         ));
@@ -286,8 +284,16 @@ impl Component for App {
 }
 
 impl AppWidgets {
-    pub(super) fn entry(&self) -> &gtk::Text { &self._entry }
-    pub(super) fn scroll(&self) -> &gtk::ScrolledWindow { &self._scroll }
-    pub(super) fn main_box(&self) -> &gtk::Box { &self._main }
-    pub(super) fn plugins_box(&self) -> &gtk::Box { &self.plugins }
+    pub(super) fn entry(&self) -> &gtk::Text {
+        &self._entry
+    }
+    pub(super) fn scroll(&self) -> &gtk::ScrolledWindow {
+        &self._scroll
+    }
+    pub(super) fn main_box(&self) -> &gtk::Box {
+        &self._main
+    }
+    pub(super) fn plugins_box(&self) -> &gtk::Box {
+        &self.plugins
+    }
 }
