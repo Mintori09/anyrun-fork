@@ -100,11 +100,15 @@ async fn populate_adapter_actions(adapter: &Adapter, matches: &mut Vec<Match>) {
 
                 let connected = device.is_connected().await.unwrap_or(false);
                 let status = if connected { "Connected" } else { "Paired" };
+                let battery = device.battery_percentage().await.ok().flatten();
+                let battery_info = battery
+                    .map(|p| format!(", Battery: {}%", p))
+                    .unwrap_or_default();
                 let match_id = DEVICE_ID_OFFSET + idx as u64;
 
                 matches.push(make_match(
                     &name,
-                    &format!("Status: {} ({})", status, addr),
+                    &format!("Status: {} ({}{})", status, addr, battery_info),
                     ICON_BLUETOOTH_ACTIVE,
                     match_id,
                 ));
@@ -161,7 +165,8 @@ async fn toggle_device_connection(adapter: &Adapter, selection: Match) {
     let address_str = description
         .split('(')
         .next_back()
-        .and_then(|s| s.strip_suffix(')'));
+        .and_then(|s| s.strip_suffix(')'))
+        .and_then(|s| s.split(',').next());
 
     if let Some(addr_str) = address_str
         && let Ok(addr) = addr_str.parse::<Address>()
