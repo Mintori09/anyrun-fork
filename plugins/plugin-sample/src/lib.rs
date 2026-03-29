@@ -1,8 +1,6 @@
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_helper::icon::SystemIcon;
 use anyrun_plugin::*;
-use fuzzy_matcher::skim::SkimMatcherV2;
-use fuzzy_matcher::FuzzyMatcher;
 use serde::Deserialize;
 use std::fs;
 
@@ -27,7 +25,6 @@ impl Default for Config {
 
 pub struct State {
     config: Config,
-    matcher: SkimMatcherV2,
     data: Vec<String>,
 }
 
@@ -46,7 +43,6 @@ fn init(config_dir: RString) -> State {
 
     State {
         config,
-        matcher: SkimMatcherV2::default(),
         data: fetch_data(),
     }
 }
@@ -89,7 +85,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
         .filter(|item| {
             query_parts
                 .iter()
-                .all(|part| state.matcher.fuzzy_match(item, part).is_some())
+                .all(|part| anyrun_helper::mazzy_matcher::fuzzy_match(item, part).is_some())
         })
         .take(state.config.max_entries)
         .map(|s| item_to_match(s))

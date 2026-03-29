@@ -2,12 +2,14 @@ use clap::{Parser, Subcommand};
 use gtk4::{self as gtk, gio, glib, prelude::*};
 use relm4::ComponentController;
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::{
     cell::RefCell,
     io::{self, IsTerminal, Read, Write},
     path::PathBuf,
     rc::Rc,
     sync::Arc,
+    time::Instant,
 };
 
 mod app;
@@ -87,6 +89,9 @@ struct DaemonState {
 }
 
 fn main() {
+    unsafe {
+        env::set_var("GSK_RENDERER", "ngl");
+    }
     let args = Args::parse();
 
     if let Some(cmd) = args.command {
@@ -132,11 +137,18 @@ fn fast_ipc_call(method: &'static str) {
 }
 
 fn run_client(args: Args) {
+    let time = Instant::now();
+    let duration = time.elapsed();
+    println!("[Start Application at {:?}]", duration);
+
     let app = gtk::Application::new(Some("org.anyrun.anyrun"), gio::ApplicationFlags::FLAGS_NONE);
     if let Err(e) = app.register(None::<&gio::Cancellable>) {
         eprintln!("Registration error: {e}");
         return;
     }
+
+    let duration = time.elapsed();
+    println!("[Call dbus at {:?}]", duration);
 
     let read_init_data = || {
         let mut stdin = Vec::new();
@@ -161,6 +173,9 @@ fn run_client(args: Args) {
             .collect();
         app::AppInit { args, stdin, env }
     };
+
+    let duration = time.elapsed();
+    println!("[Read init Data at {:?}]", duration);
 
     if app.is_remote() {
         let conn = app.dbus_connection().expect("No D-Bus connection");
@@ -198,6 +213,9 @@ fn run_client(args: Args) {
                 loop_clone.quit();
             },
         );
+        let duration = time.elapsed();
+        println!("[Check at {:?}]", duration);
+
         main_loop.run();
     } else {
         let shared_init = Arc::new(read_init_data());
@@ -237,15 +255,21 @@ fn setup_dbus(app: &gtk::Application, state: Rc<RefCell<DaemonState>>) {
                     InterfaceMethod::Show(show) => {
                         match serde_json::from_slice::<app::AppInit>(&show.args) {
                             Ok(_init_data) => {
-                                state.borrow().sender.emit(app::AppMsg::Activate(Some(app::SendInvocation(invocation))));
+                                state.borrow().sender.emit(app::AppMsg::Activate(Some(
+                                    app::SendInvocation(invocation),
+                                )));
                             }
                             Err(_) => {
-                                invocation.return_error(gio::DBusError::InvalidArgs, "Invalid JSON");
+                                invocation
+                                    .return_error(gio::DBusError::InvalidArgs, "Invalid JSON");
                             }
                         }
                     }
                     InterfaceMethod::Close => {
-                        state.borrow().sender.emit(app::AppMsg::Action(crate::config::Action::Close));
+                        state
+                            .borrow()
+                            .sender
+                            .emit(app::AppMsg::Action(crate::config::Action::Close));
                         invocation.return_value(None);
                     }
                     InterfaceMethod::Quit => {
@@ -318,7 +342,11 @@ fn run_daemon(args: Args) {
 
     let provider_child = std::process::Command::new(&provider_path)
         .arg("--config-dir")
-        .arg(config_dir.as_deref().unwrap_or(anyrun_provider_ipc::CONFIG_DIRS[0]))
+        .arg(
+            config_dir
+                .as_deref()
+                .unwrap_or(anyrun_provider_ipc::CONFIG_DIRS[0]),
+        )
         .args(
             config
                 .plugins

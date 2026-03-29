@@ -37,9 +37,13 @@ impl Default for Config {
 pub struct SearchableEntry {
     id: u64,
     name_lc: String,
+    name_na: String,
     title_lc: String,
+    title_na: String,
     desc_lc: Option<String>,
+    desc_na: Option<String>,
     keywords_lc: Vec<String>,
+    keywords_na: Vec<String>,
     offset: i64,
     is_action: bool,
 }
@@ -169,23 +173,34 @@ pub fn init(config_dir: RString) -> State {
     let mut search_entries = Vec::with_capacity(raw_entries.len());
     let mut entry_map = HashMap::with_capacity(raw_entries.len());
 
+    use anyrun_helper::mazzy_matcher::remove_accents;
+
     for (entry, id) in raw_entries {
+        let name_lc = entry.name.to_lowercase();
+        let title_lc = entry.localized_name().to_lowercase();
+        let desc_lc = entry.desc.as_ref().map(|d| d.to_lowercase());
+        let keywords_lc: Vec<String> = entry
+            .keywords
+            .iter()
+            .map(|k| k.to_lowercase())
+            .chain(
+                entry
+                    .localized_keywords
+                    .iter()
+                    .flat_map(|ks| ks.iter().map(|k| k.to_lowercase())),
+            )
+            .collect();
+
         search_entries.push(SearchableEntry {
             id,
-            name_lc: entry.name.to_lowercase(),
-            title_lc: entry.localized_name().to_lowercase(),
-            desc_lc: entry.desc.as_ref().map(|d| d.to_lowercase()),
-            keywords_lc: entry
-                .keywords
-                .iter()
-                .map(|k| k.to_lowercase())
-                .chain(
-                    entry
-                        .localized_keywords
-                        .iter()
-                        .flat_map(|ks| ks.iter().map(|k| k.to_lowercase())),
-                )
-                .collect(),
+            name_na: remove_accents(&name_lc),
+            name_lc,
+            title_na: remove_accents(&title_lc),
+            title_lc,
+            desc_na: desc_lc.as_ref().map(|d| remove_accents(d)),
+            desc_lc,
+            keywords_na: keywords_lc.iter().map(|k| remove_accents(k)).collect(),
+            keywords_lc,
             offset: entry.offset,
             is_action: entry.is_action,
         });
@@ -202,13 +217,19 @@ pub fn init(config_dir: RString) -> State {
 
 #[get_matches]
 pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
+    use anyrun_helper::mazzy_matcher::remove_accents;
     let input_lc = input.to_lowercase();
     let input_trimmed = input_lc.trim();
 
     let matcher = fuzzy_matcher::skim::SkimMatcherV2::default();
-    let tokens: Vec<&str> = input_trimmed.split_whitespace().collect();
+    let tokens: Vec<String> = input_trimmed
+        .split_whitespace()
+        .map(|s| s.to_string())
+        .collect();
+    let tokens_na: Vec<String> = tokens.iter().map(|t| remove_accents(t)).collect();
+
     const ACTION_VERBS: &[&str] = &["quit", "close", "exit", "kill", "stop", "restart"];
-    let has_action_verb = tokens.iter().any(|t| ACTION_VERBS.contains(t));
+    let has_action_verb = tokens.iter().any(|t| ACTION_VERBS.contains(&t.as_str()));
 
     let mut scored_results: Vec<(u64, i64)> = state
         .search_entries
@@ -216,18 +237,36 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
         .filter_map(|se| {
             let mut score = 0;
             if !tokens.is_empty() {
-                for token in &tokens {
-                    let s_title = matcher.fuzzy_match(&se.title_lc, token).unwrap_or(0);
-                    let s_name = matcher.fuzzy_match(&se.name_lc, token).unwrap_or(0);
+                for (i, token) in tokens.iter().enumerate() {
+                    let token_na = &tokens_na[i];
+
+                    let s_title = matcher
+                        .fuzzy_match(&se.title_lc, token)
+                        .or_else(|| matcher.fuzzy_match(&se.title_na, token_na))
+                        .unwrap_or(0);
+                    let s_name = matcher
+                        .fuzzy_match(&se.name_lc, token)
+                        .or_else(|| matcher.fuzzy_match(&se.name_na, token_na))
+                        .unwrap_or(0);
                     let s_desc = se
                         .desc_lc
                         .as_ref()
-                        .and_then(|d| matcher.fuzzy_match(d, token))
+                        .and_then(|d| {
+                            matcher.fuzzy_match(d, token).or_else(|| {
+                                matcher.fuzzy_match(se.desc_na.as_ref().unwrap(), token_na)
+                            })
+                        })
                         .unwrap_or(0);
+
                     let s_key = se
                         .keywords_lc
                         .iter()
-                        .filter_map(|k| matcher.fuzzy_match(k, token))
+                        .enumerate()
+                        .filter_map(|(ki, k)| {
+                            matcher.fuzzy_match(k, token).or_else(|| {
+                                matcher.fuzzy_match(&se.keywords_na[ki], token_na)
+                            })
+                        })
                         .max()
                         .unwrap_or(0);
 

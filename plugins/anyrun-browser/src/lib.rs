@@ -2,8 +2,6 @@ use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_helper::focus_to_class;
 use anyrun_helper::icon::{SystemIcon, get_icon_path};
 use anyrun_plugin::*;
-use fuzzy_matcher::FuzzyMatcher;
-use fuzzy_matcher::skim::SkimMatcherV2;
 use serde::Deserialize;
 use std::process::Command;
 use std::sync::Mutex;
@@ -33,7 +31,6 @@ impl Default for Config {
 pub struct State {
     config: Config,
     full_path: String,
-    matcher: SkimMatcherV2,
     cache: Mutex<Option<(Instant, Vec<Browser>)>>,
 }
 
@@ -64,7 +61,6 @@ fn init(config_dir: RString) -> State {
     State {
         config,
         full_path,
-        matcher: SkimMatcherV2::default().smart_case(),
         cache: Mutex::new(None),
     }
 }
@@ -150,7 +146,7 @@ fn fetch_tab(bin_path: &str) -> Vec<Browser> {
     }
 }
 
-fn get_scored_matches(state: &State, list: Vec<Browser>, query: Vec<&str>) -> Vec<Browser> {
+fn get_scored_matches(_state: &State, list: Vec<Browser>, query: Vec<&str>) -> Vec<Browser> {
     let mut scored: Vec<(i64, Browser)> = list
         .into_iter()
         .filter_map(|browser| {
@@ -160,8 +156,8 @@ fn get_scored_matches(state: &State, list: Vec<Browser>, query: Vec<&str>) -> Ve
 
             let mut total_score = 0;
             for part in &query {
-                let title_score = state.matcher.fuzzy_match(&browser.title, part);
-                let url_score = state.matcher.fuzzy_match(&browser.url, part);
+                let title_score = anyrun_helper::mazzy_matcher::fuzzy_match(&browser.title, part);
+                let url_score = anyrun_helper::mazzy_matcher::fuzzy_match(&browser.url, part);
 
                 match (title_score, url_score) {
                     (Some(s1), Some(s2)) => total_score += s1.max(s2),

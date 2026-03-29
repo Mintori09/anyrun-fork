@@ -2,7 +2,6 @@ use std::{fs, io::stdin};
 
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::*;
-use fuzzy_matcher::FuzzyMatcher;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -57,15 +56,12 @@ fn handler(_match: Match) -> HandleResult {
 
 #[get_matches]
 fn get_matches(input: RString, state: &State) -> RVec<Match> {
-    let matcher = fuzzy_matcher::skim::SkimMatcherV2::default().smart_case();
-
     let mut lines = state
         .lines
         .clone()
         .into_iter()
         .filter_map(|line| {
-            matcher
-                .fuzzy_match(&line, &input)
+            anyrun_helper::mazzy_matcher::fuzzy_match(&line, &input)
                 .map(|score| (line, score))
         })
         .collect::<Vec<_>>();

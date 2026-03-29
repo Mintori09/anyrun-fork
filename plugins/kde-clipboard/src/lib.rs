@@ -1,7 +1,5 @@
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::*;
-use fuzzy_matcher::FuzzyMatcher;
-use fuzzy_matcher::skim::SkimMatcherV2;
 use serde::Deserialize;
 use std::fs;
 use std::time::{Duration, Instant};
@@ -51,7 +49,6 @@ use std::sync::RwLock;
 pub struct State {
     config: Config,
     connection: Connection,
-    matcher: SkimMatcherV2,
     cached_history: RwLock<(Instant, Vec<String>)>,
 }
 
@@ -69,7 +66,6 @@ fn init(config_dir: RString) -> State {
     State {
         config,
         connection,
-        matcher: SkimMatcherV2::default().smart_case(),
         cached_history,
     }
 }
@@ -127,9 +123,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
             if query.is_empty() {
                 Some((0, clean_item))
             } else {
-                state
-                    .matcher
-                    .fuzzy_match(&clean_item, query)
+                anyrun_helper::mazzy_matcher::fuzzy_match(&clean_item, query)
                     .map(|score| (score, clean_item))
             }
         })

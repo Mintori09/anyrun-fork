@@ -1,6 +1,5 @@
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::*;
-use fuzzy_matcher::FuzzyMatcher;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
@@ -105,12 +104,10 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
         return RVec::new();
     }
 
-    let matcher = fuzzy_matcher::skim::SkimMatcherV2::default().ignore_case();
-
     let mut matches: Vec<(&Symbol, i64)> = state
         .symbols
         .iter()
-        .filter_map(|s| matcher.fuzzy_match(&s.name, input).map(|score| (s, score)))
+        .filter_map(|s| anyrun_helper::mazzy_matcher::fuzzy_match(&s.name, input).map(|score| (s, score)))
         .collect();
 
     matches.sort_by(|a, b| b.1.cmp(&a.1));

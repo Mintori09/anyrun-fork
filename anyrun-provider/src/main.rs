@@ -182,20 +182,25 @@ async fn worker(stream: UnixStream, state: &mut State) -> io::Result<WorkerResul
             Some(join_result) = pending_results.next() => {
                 if let Ok((mut matches, idx)) = join_result
                     && let Some(p_state) = state.plugins.get(idx) {
-                        // Apply frecency re-sorting
+                        // Apply frecency re-sorting while preserving match quality
+                        let mut indexed_matches: Vec<_> = matches.into_iter().enumerate().collect();
                         {
                             let frecency = state.frecency.lock().await;
                             let plugin_name = p_state.info.name.as_str();
 
-                            // We sort by frecency score.
-                            // Matches with higher frecency score go first.
-                            // We use partial_cmp and then fallback to original order for stability.
-                            matches.sort_by(|a, b| {
-                                let score_a = frecency.get_score(plugin_name, a.title.as_str(), 7.0);
-                                let score_b = frecency.get_score(plugin_name, b.title.as_str(), 7.0);
+                            indexed_matches.sort_by(|(idx_a, a), (idx_b, b)| {
+                                let f_score_a = frecency.get_score(plugin_name, a.title.as_str(), 7.0);
+                                let f_score_b = frecency.get_score(plugin_name, b.title.as_str(), 7.0);
+
+                                // Balance original rank and frecency
+                                // Higher score is better
+                                let score_a = (1.0 / (1.0 + *idx_a as f64)) + f_score_a * 0.1;
+                                let score_b = (1.0 / (1.0 + *idx_b as f64)) + f_score_b * 0.1;
+
                                 score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
                             });
                         }
+                        matches = indexed_matches.into_iter().map(|(_, m)| m).collect();
 
                         socket.send(&Response::Matches {
                             plugin: p_state.info.clone(),

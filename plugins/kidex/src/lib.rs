@@ -1,6 +1,5 @@
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::{anyrun_interface::HandleResult, *};
-use fuzzy_matcher::FuzzyMatcher;
 use kidex_common::IndexEntry;
 use serde::Deserialize;
 use std::{fs, os::unix::prelude::OsStrExt, process::Command};
@@ -140,14 +139,12 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
             .into()
         }
         None => {
-            let matcher = fuzzy_matcher::skim::SkimMatcherV2::default().smart_case();
             let mut index = state
                 .index
                 .clone()
                 .into_iter()
                 .filter_map(|(id, index_entry)| {
-                    matcher
-                        .fuzzy_match(&index_entry.path.as_os_str().to_string_lossy(), &input)
+                    anyrun_helper::mazzy_matcher::fuzzy_match(&index_entry.path.to_string_lossy(), &input)
                         .map(|val| (index_entry, id, val))
                 })
                 .collect::<Vec<_>>();

@@ -2,8 +2,6 @@ use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_helper::icon::SystemIcon;
 use anyrun_helper::terminal;
 use anyrun_plugin::*;
-use fuzzy_matcher::FuzzyMatcher;
-use fuzzy_matcher::skim::SkimMatcherV2;
 use serde::Deserialize;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -119,14 +117,12 @@ fn get_list_output(source: &str) -> Vec<String> {
 }
 
 fn get_matches_fuzzy_finder(list: Vec<String>, query: Vec<&str>) -> Vec<String> {
-    let matcher = SkimMatcherV2::default();
     let mut matches: Vec<(i64, String)> = list
         .into_iter()
         .filter_map(|path| {
             let mut total_score = 0;
             for part in &query {
-                if let Some(score) = matcher.fuzzy_match(&path.to_lowercase(), &part.to_lowercase())
-                {
+                if let Some(score) = anyrun_helper::mazzy_matcher::fuzzy_match(&path, part) {
                     total_score += score;
                 } else {
                     return None;

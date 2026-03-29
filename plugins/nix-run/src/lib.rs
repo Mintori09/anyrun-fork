@@ -1,6 +1,5 @@
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::{HandleResult, Match, PluginInfo, get_matches, handler, info, init};
-use fuzzy_matcher::FuzzyMatcher;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -176,7 +175,6 @@ fn get_matches(input: RString, state: &mut State) -> RVec<Match> {
         return RVec::new();
     };
 
-    let matcher = fuzzy_matcher::skim::SkimMatcherV2::default().smart_case();
     let packages = state.packages.lock().unwrap();
     let mut entries = packages
         .iter()
@@ -186,9 +184,8 @@ fn get_matches(input: RString, state: &mut State) -> RVec<Match> {
             if package.meta.unfree.is_some_and(|unfree| unfree) && !state.config.allow_unfree {
                 return None;
             }
-            let score = matcher.fuzzy_match(name, input).unwrap_or(0)
-                + matcher
-                    .fuzzy_match(package.meta.main_program.as_ref().unwrap(), input)
+            let score = anyrun_helper::mazzy_matcher::fuzzy_match(name, input).unwrap_or(0)
+                + anyrun_helper::mazzy_matcher::fuzzy_match(package.meta.main_program.as_ref().unwrap(), input)
                     .unwrap_or(0);
 
             if score > 0 {

@@ -1,8 +1,6 @@
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_helper::icon::SystemIcon;
 use anyrun_plugin::*;
-use fuzzy_matcher::FuzzyMatcher;
-use fuzzy_matcher::skim::SkimMatcherV2;
 use serde::Deserialize;
 use std::process::Command;
 use std::{env, fs, path::PathBuf};
@@ -83,8 +81,6 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
 }
 
 fn get_matches_fuzzy_finder(list: Vec<SyncManager>, query: Vec<&str>) -> Vec<SyncManager> {
-    let matcher = SkimMatcherV2::default();
-
     let mut matches: Vec<(i64, SyncManager)> = list
         .into_iter()
         .filter_map(|sync| {
@@ -99,9 +95,9 @@ fn get_matches_fuzzy_finder(list: Vec<SyncManager>, query: Vec<&str>) -> Vec<Syn
             for part in &query {
                 let part_lower = part.to_lowercase();
 
-                let title_score = matcher.fuzzy_match(&source, &part_lower);
+                let title_score = anyrun_helper::mazzy_matcher::fuzzy_match(&source, &part_lower);
 
-                let url_score = matcher.fuzzy_match(&name, &part_lower);
+                let url_score = anyrun_helper::mazzy_matcher::fuzzy_match(&name, &part_lower);
 
                 match (title_score, url_score) {
                     (Some(s1), Some(s2)) => total_score += s1.max(s2),

@@ -6,12 +6,12 @@ mod validate;
 use abi_stable::std_types::ROption::{RNone, RSome};
 use abi_stable::std_types::{RString, RVec};
 use anyrun_plugin::*;
-use fuzzy_matcher::FuzzyMatcher;
-use fuzzy_matcher::skim::SkimMatcherV2;
+use notify_rust::Notification;
 use serde::Deserialize;
 use std::fs::{self};
 use std::path::PathBuf;
 use std::sync::RwLock;
+use which::{which, which_in};
 
 use crate::action::model::{ActionTarget, InputCategory, UniversalAction};
 use crate::registry::get_internal_actions;
@@ -43,7 +43,6 @@ pub struct State {
     filetype: RwLock<InputCategory>,
     config: Config,
     actions: Vec<UniversalAction>,
-    matcher: SkimMatcherV2,
     clipboard: RwLock<String>,
 }
 
@@ -82,7 +81,6 @@ fn init(config_dir: RString) -> State {
         clipboard: RwLock::new(clipboard),
         config,
         actions,
-        matcher: SkimMatcherV2::default(),
     }
 }
 
@@ -96,6 +94,17 @@ fn info() -> PluginInfo {
 
 #[get_matches]
 fn get_matches(input: RString, state: &State) -> RVec<Match> {
+    if which("magika").is_err() {
+        let _ = Notification::new()
+            .summary("Dependency Missing")
+            .body("The 'magika' binary was not found on your system PATH.")
+            .icon("dialog-error")
+            .show();
+
+        eprintln!("Error: 'magika' command not found.");
+
+        return RVec::new();
+    }
     let query = match extract_query(&input, &state.config.prefix) {
         Some(q) => q,
         None => return RVec::new(),
@@ -152,9 +161,7 @@ fn filter_and_score_actions<'a>(
             if is_initial_view {
                 Some((0, action))
             } else {
-                state
-                    .matcher
-                    .fuzzy_match(&action.name_lowercase, query)
+                anyrun_helper::mazzy_matcher::fuzzy_match(&action.name_lowercase, query)
                     .map(|score| (score, action))
             }
         })
@@ -236,7 +243,6 @@ fn test_read_config() {
         clipboard: RwLock::new(clipboard),
         config,
         actions,
-        matcher: SkimMatcherV2::default(),
     };
 
     println!("{:?}", state.config);
