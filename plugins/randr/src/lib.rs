@@ -2,7 +2,6 @@ use std::{env, fs};
 
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::*;
-use fuzzy_matcher::FuzzyMatcher;
 use randr::{dummy::Dummy, hyprland::Hyprland, Configure, Monitor, Randr};
 use serde::Deserialize;
 
@@ -111,7 +110,6 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
         return RVec::new();
     };
 
-    let matcher = fuzzy_matcher::skim::SkimMatcherV2::default().smart_case();
     let mut vec = match &state.inner {
         InnerState::None => state
             .randr
@@ -181,8 +179,7 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
     }
     .into_iter()
     .filter_map(|_match| {
-        matcher
-            .fuzzy_match(&_match.title, input)
+        anyrun_helper::mazzy_matcher::fuzzy_match(&_match.title, input)
             .map(|score| (_match, score))
     })
     .collect::<Vec<_>>();

@@ -2,8 +2,6 @@ use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_helper::focus_to_window_by_id;
 use anyrun_helper::icon::SystemIcon;
 use anyrun_plugin::*;
-use fuzzy_matcher::FuzzyMatcher;
-use fuzzy_matcher::skim::SkimMatcherV2;
 use serde::Deserialize;
 use std::process::Command;
 use std::sync::RwLock;
@@ -30,7 +28,6 @@ impl Default for Config {
 
 pub struct State {
     config: Config,
-    matcher: SkimMatcherV2,
     cache: RwLock<Option<(Instant, Vec<KdeWindow>)>>,
 }
 
@@ -87,7 +84,6 @@ fn init(config_dir: RString) -> State {
 
     State {
         config,
-        matcher: SkimMatcherV2::default().smart_case(),
         cache: RwLock::new(None),
     }
 }
@@ -135,7 +131,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
                     return Some((0, win));
                 }
 
-                let score = state.matcher.fuzzy_match(&win.class, query.trim_end());
+                let score = anyrun_helper::mazzy_matcher::fuzzy_match(&win.class, query.trim_end());
                 score.map(|s| (s, win))
             })
             .collect();

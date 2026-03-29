@@ -16,3 +16,4 @@ ron = "0.12.0"
 regex = "1.12.2"
 chrono = { features = [ "serde" ], version = "0.4.42" }
 fuzzy-matcher = "0.3.7"
+anyrun-helper = { path = "../../anyrun-helper" }

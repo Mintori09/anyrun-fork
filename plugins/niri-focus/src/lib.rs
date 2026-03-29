@@ -2,7 +2,6 @@ use std::{convert::Into, fs};
 
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::{HandleResult, Match, PluginInfo, get_matches, handler, info, init};
-use fuzzy_matcher::FuzzyMatcher;
 use niri_ipc::{Action, Request, Window, socket::Socket};
 use serde::Deserialize;
 
@@ -91,7 +90,6 @@ fn get_matches(input: RString, state: &Option<State>) -> RVec<Match> {
     let Some(state) = state else {
         return RVec::new();
     };
-    let matcher = fuzzy_matcher::skim::SkimMatcherV2::default().smart_case();
     let mut entries = state
         .windows
         .iter()
@@ -99,12 +97,12 @@ fn get_matches(input: RString, state: &Option<State>) -> RVec<Match> {
             let score = window
                 .title
                 .as_ref()
-                .and_then(|title| matcher.fuzzy_match(title, &input))
+                .and_then(|title| anyrun_helper::mazzy_matcher::fuzzy_match(title, &input))
                 .unwrap_or(0)
                 + window
                     .app_id
                     .as_ref()
-                    .and_then(|app_id| matcher.fuzzy_match(app_id, &input))
+                    .and_then(|app_id| anyrun_helper::mazzy_matcher::fuzzy_match(app_id, &input))
                     .unwrap_or(0);
 
             if score > 0 {

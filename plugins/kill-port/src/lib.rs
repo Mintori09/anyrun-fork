@@ -1,8 +1,6 @@
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_helper::icon::SystemIcon;
 use anyrun_plugin::*;
-use fuzzy_matcher::FuzzyMatcher;
-use fuzzy_matcher::skim::SkimMatcherV2;
 use serde::Deserialize;
 use std::process::Command;
 use std::sync::Mutex;
@@ -29,7 +27,6 @@ impl Default for Config {
 
 pub struct State {
     config: Config,
-    matcher: SkimMatcherV2,
     cache: Mutex<Option<(Instant, Vec<ActivePort>)>>,
 }
 
@@ -110,7 +107,6 @@ fn init(config_dir: RString) -> State {
 
     State {
         config,
-        matcher: SkimMatcherV2::default().smart_case(),
         cache: Mutex::new(None),
     }
 }
@@ -153,7 +149,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
 
                 // Tìm kiếm theo số port hoặc tên tiến trình
                 let search_text = format!("{} {}", p.port, p.process);
-                let score = state.matcher.fuzzy_match(&search_text, query.trim());
+                let score = anyrun_helper::mazzy_matcher::fuzzy_match(&search_text, query.trim());
                 score.map(|s| (s, p))
             })
             .collect();

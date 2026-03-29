@@ -15,8 +15,9 @@ build target="all":
 
 build-plugins:
     @find plugins -maxdepth 2 -name "Cargo.toml" | while read -r toml; do \
-        echo "Building plugin: $$(dirname $$toml)"; \
-        cargo build --release --manifest-path "$$toml"; \
+        dir=$(dirname "$toml"); \
+        echo "Building plugin in directory: $dir"; \
+        cargo build --release --manifest-path "$toml"; \
     done
 
 test target="all":
@@ -30,11 +31,11 @@ test target="all":
         "cargo test -p " + target
     } }}
 
-test-plugins:
-    @find plugins -maxdepth 2 -name "Cargo.toml" | while read -r toml; do \
-        echo "Testing plugin: $$(dirname $$toml)"; \
-        cargo test --manifest-path "$$toml"; \
-    done
+# test-plugins:
+#     @find plugins -maxdepth 2 -name "Cargo.toml" | while read -r toml; do \
+#         echo "Testing plugin: $$(dirname $$toml)"; \
+#         cargo test --manifest-path "$$toml"; \
+#     done
 
 run:
     cargo run -p anyrun

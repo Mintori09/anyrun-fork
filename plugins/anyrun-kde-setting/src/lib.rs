@@ -1,7 +1,5 @@
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::*;
-use fuzzy_matcher::FuzzyMatcher;
-use fuzzy_matcher::skim::SkimMatcherV2;
 use serde::Deserialize;
 use std::{fs, process::Command};
 
@@ -131,14 +129,11 @@ pub fn search_settings(settings: Vec<KDESetting>, query: &str) -> Vec<KDESetting
         return settings;
     }
 
-    let matcher = SkimMatcherV2::default();
-
     let mut ranked_results: Vec<(i64, KDESetting)> = settings
         .into_iter()
         .filter_map(|setting| {
             let target_text = format!("{} {}", setting.name, setting.description);
-            matcher
-                .fuzzy_match(&target_text, query)
+            anyrun_helper::mazzy_matcher::fuzzy_match(&target_text, query)
                 .map(|score| (score, setting))
         })
         .collect();

@@ -1,8 +1,6 @@
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_helper::{icon::SystemIcon, terminal};
 use anyrun_plugin::*;
-use fuzzy_matcher::FuzzyMatcher;
-use fuzzy_matcher::skim::SkimMatcherV2;
 use serde::Deserialize;
 use std::{fs, process::Command};
 
@@ -11,7 +9,6 @@ use std::time::{Duration, Instant};
 
 pub struct State {
     config: Config,
-    matcher: SkimMatcherV2,
     zoxide: RwLock<(Instant, Vec<String>)>,
 }
 
@@ -48,7 +45,6 @@ fn init(config_dir: RString) -> State {
 
     State {
         config,
-        matcher: SkimMatcherV2::default(),
         zoxide: RwLock::new((Instant::now(), get_all_zoxide_paths())),
     }
 }
@@ -93,7 +89,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
             // "Just find": Check if all query parts exist in the path
             query_parts
                 .iter()
-                .all(|part| state.matcher.fuzzy_match(path, part).is_some())
+                .all(|part| anyrun_helper::mazzy_matcher::fuzzy_match(path, part).is_some())
         })
         .take(state.config.max_entries) // Stop looking once we hit the limit
         .map(|path| Match {
