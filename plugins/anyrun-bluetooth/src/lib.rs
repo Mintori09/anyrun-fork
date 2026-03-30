@@ -101,14 +101,11 @@ async fn populate_adapter_actions(adapter: &Adapter, matches: &mut Vec<Match>) {
                 let connected = device.is_connected().await.unwrap_or(false);
                 let status = if connected { "Connected" } else { "Paired" };
                 let battery = device.battery_percentage().await.ok().flatten();
-                let battery_info = battery
-                    .map(|p| format!(", Battery: {}%", p))
-                    .unwrap_or_default();
                 let match_id = DEVICE_ID_OFFSET + idx as u64;
 
                 matches.push(make_match(
                     &name,
-                    &format!("Status: {} ({}{})", status, addr, battery_info),
+                    &format_status(status, addr, battery),
                     ICON_BLUETOOTH_ACTIVE,
                     match_id,
                 ));
@@ -129,6 +126,19 @@ async fn populate_adapter_actions(adapter: &Adapter, matches: &mut Vec<Match>) {
         ICON_BLUETOOTH_DISABLED,
         ACTION_DISABLE,
     ));
+}
+
+fn format_status(status: &str, addr: Address, battery: Option<u8>) -> String {
+    let battery_info = battery
+        .map(|p| {
+            if p < 20 {
+                format!(", Battery: <span foreground='red'>{}%</span>", p)
+            } else {
+                format!(", Battery: {}%", p)
+            }
+        })
+        .unwrap_or_default();
+    format!("Status: {} ({}{})", status, addr, battery_info)
 }
 
 #[handler]
@@ -160,15 +170,21 @@ fn handler(selection: Match, state: &State) -> HandleResult {
     HandleResult::Close
 }
 
-async fn toggle_device_connection(adapter: &Adapter, selection: Match) {
-    let description = selection.description.unwrap_or_default().to_string();
-    let address_str = description
+fn extract_address(description: &str) -> Option<String> {
+    description
         .split('(')
         .next_back()
         .and_then(|s| s.strip_suffix(')'))
-        .and_then(|s| s.split(',').next());
+        .and_then(|s| s.split(',').next())
+        // Remove pango tags if present by splitting by '<' and taking the first part
+        .and_then(|s| s.split('<').next())
+        .map(|s| s.trim().to_string())
+}
 
-    if let Some(addr_str) = address_str
+async fn toggle_device_connection(adapter: &Adapter, selection: Match) {
+    let description = selection.description.unwrap_or_default().to_string();
+
+    if let Some(addr_str) = extract_address(&description)
         && let Ok(addr) = addr_str.parse::<Address>()
         && let Ok(device) = adapter.device(addr)
     {
@@ -184,8 +200,52 @@ fn make_match(title: &str, description: &str, icon: &str, id: u64) -> Match {
     Match {
         title: title.into(),
         description: ROption::RSome(description.into()),
-        use_pango: false,
+        use_pango: true,
         icon: ROption::RSome(icon.into()),
         id: ROption::RSome(id),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_status() {
+        let addr = "00:11:22:33:44:55".parse::<Address>().unwrap();
+
+        // No battery
+        let s1 = format_status("Connected", addr, None);
+        assert_eq!(s1, "Status: Connected (00:11:22:33:44:55)");
+
+        // Good battery
+        let s2 = format_status("Connected", addr, Some(85));
+        assert_eq!(s2, "Status: Connected (00:11:22:33:44:55, Battery: 85%)");
+
+        // Low battery
+        let s3 = format_status("Connected", addr, Some(15));
+        assert_eq!(
+            s3,
+            "Status: Connected (00:11:22:33:44:55, Battery: <span foreground='red'>15%</span>)"
+        );
+    }
+
+    #[test]
+    fn test_extract_address() {
+        // Without battery
+        let d1 = "Status: Connected (00:11:22:33:44:55)";
+        assert_eq!(extract_address(d1), Some("00:11:22:33:44:55".to_string()));
+
+        // With good battery
+        let d2 = "Status: Connected (00:11:22:33:44:55, Battery: 85%)";
+        assert_eq!(extract_address(d2), Some("00:11:22:33:44:55".to_string()));
+
+        // With low battery (pango tags)
+        let d3 = "Status: Connected (00:11:22:33:44:55, Battery: <span foreground='red'>15%</span>)";
+        assert_eq!(extract_address(d3), Some("00:11:22:33:44:55".to_string()));
+
+        // Invalid
+        let d4 = "Some random description";
+        assert_eq!(extract_address(d4), None);
     }
 }
