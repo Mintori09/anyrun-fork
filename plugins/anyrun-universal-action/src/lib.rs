@@ -11,7 +11,7 @@ use serde::Deserialize;
 use std::fs::{self};
 use std::path::PathBuf;
 use std::sync::RwLock;
-use which::{which, which_in};
+use which::which;
 
 use crate::action::model::{ActionTarget, InputCategory, UniversalAction};
 use crate::registry::get_internal_actions;
