@@ -61,8 +61,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
         .clone()
         .into_iter()
         .filter_map(|line| {
-            anyrun_helper::mazzy_matcher::fuzzy_match(&line, &input)
-                .map(|score| (line, score))
+            anyrun_helper::mazzy_matcher::fuzzy_match(&line, &input).map(|score| (line, score))
         })
         .collect::<Vec<_>>();
 

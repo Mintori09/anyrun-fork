@@ -12,7 +12,6 @@ use tokio::{net::UnixListener, sync::mpsc::Receiver};
 
 use crate::config::Config;
 
-
 pub fn worker_spawn(
     config: Arc<Config>,
     config_dir: Option<String>,

@@ -179,8 +179,7 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
     }
     .into_iter()
     .filter_map(|_match| {
-        anyrun_helper::mazzy_matcher::fuzzy_match(&_match.title, input)
-            .map(|score| (_match, score))
+        anyrun_helper::mazzy_matcher::fuzzy_match(&_match.title, input).map(|score| (_match, score))
     })
     .collect::<Vec<_>>();
 

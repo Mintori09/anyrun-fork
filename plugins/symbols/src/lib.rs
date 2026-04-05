@@ -107,7 +107,9 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
     let mut matches: Vec<(&Symbol, i64)> = state
         .symbols
         .iter()
-        .filter_map(|s| anyrun_helper::mazzy_matcher::fuzzy_match(&s.name, input).map(|score| (s, score)))
+        .filter_map(|s| {
+            anyrun_helper::mazzy_matcher::fuzzy_match(&s.name, input).map(|score| (s, score))
+        })
         .collect();
 
     matches.sort_by(|a, b| b.1.cmp(&a.1));

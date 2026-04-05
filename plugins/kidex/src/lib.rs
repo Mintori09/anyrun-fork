@@ -144,8 +144,11 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
                 .clone()
                 .into_iter()
                 .filter_map(|(id, index_entry)| {
-                    anyrun_helper::mazzy_matcher::fuzzy_match(&index_entry.path.to_string_lossy(), &input)
-                        .map(|val| (index_entry, id, val))
+                    anyrun_helper::mazzy_matcher::fuzzy_match(
+                        &index_entry.path.to_string_lossy(),
+                        &input,
+                    )
+                    .map(|val| (index_entry, id, val))
                 })
                 .collect::<Vec<_>>();
 

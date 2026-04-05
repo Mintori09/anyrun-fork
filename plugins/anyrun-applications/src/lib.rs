@@ -263,9 +263,9 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
                         .iter()
                         .enumerate()
                         .filter_map(|(ki, k)| {
-                            matcher.fuzzy_match(k, token).or_else(|| {
-                                matcher.fuzzy_match(&se.keywords_na[ki], token_na)
-                            })
+                            matcher
+                                .fuzzy_match(k, token)
+                                .or_else(|| matcher.fuzzy_match(&se.keywords_na[ki], token_na))
                         })
                         .max()
                         .unwrap_or(0);

@@ -1,10 +1,10 @@
+use super::{App, AppWidgets};
 use crate::plugin_box::{PluginBoxInput, PluginBoxOutput};
+use adw::prelude::*;
 use gtk::glib;
 use gtk4 as gtk;
 use libadwaita as adw;
-use adw::prelude::*;
 use relm4::prelude::*;
-use super::{App, AppWidgets};
 
 impl App {
     pub(super) fn handle_plugin_output(
@@ -38,19 +38,19 @@ impl App {
                             #[weak(rename_to = scroll)]
                             widgets.scroll(),
                             move |value| {
-                            let val = value as i32;
-                            let old_max = scroll.max_content_height();
-                            if val > old_max {
-                                scroll.set_max_content_height(val);
-                                scroll.set_min_content_height(val);
-                            } else {
-                                scroll.set_min_content_height(val);
-                                scroll.set_max_content_height(val);
+                                let val = value as i32;
+                                let old_max = scroll.max_content_height();
+                                if val > old_max {
+                                    scroll.set_max_content_height(val);
+                                    scroll.set_min_content_height(val);
+                                } else {
+                                    scroll.set_min_content_height(val);
+                                    scroll.set_max_content_height(val);
+                                }
+                                if val <= 0 {
+                                    scroll.set_visible(false);
+                                }
                             }
-                            if val <= 0 {
-                                scroll.set_visible(false);
-                            }
-                        }
                         ));
 
                         let anim = adw::TimedAnimation::builder()
@@ -104,16 +104,16 @@ impl App {
                             #[weak(rename_to = scroll)]
                             widgets.scroll(),
                             move |value| {
-                            let val = value as i32;
-                            let old_max = scroll.max_content_height();
-                            if val > old_max {
-                                scroll.set_max_content_height(val);
-                                scroll.set_min_content_height(val);
-                            } else {
-                                scroll.set_min_content_height(val);
-                                scroll.set_max_content_height(val);
+                                let val = value as i32;
+                                let old_max = scroll.max_content_height();
+                                if val > old_max {
+                                    scroll.set_max_content_height(val);
+                                    scroll.set_min_content_height(val);
+                                } else {
+                                    scroll.set_min_content_height(val);
+                                    scroll.set_max_content_height(val);
+                                }
                             }
-                        }
                         ));
 
                         let anim = adw::TimedAnimation::builder()

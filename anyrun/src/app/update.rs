@@ -1,11 +1,11 @@
+use super::{App, AppMsg, AppWidgets, PostRunAction, SendInvocation};
 use crate::config::{Action, Keybind};
 use anyrun_provider_ipc as ipc;
+use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use gtk4 as gtk;
-use gtk::prelude::*;
 use relm4::prelude::*;
 use std::io::{self, Write};
-use super::{App, AppMsg, PostRunAction, SendInvocation, AppWidgets};
 
 impl App {
     pub(super) fn handle_window_msg(
@@ -188,6 +188,9 @@ impl App {
             }
             AppMsg::Activate(invocation) => {
                 self.handle_activate(widgets, invocation, sender, root);
+            }
+            AppMsg::ReloadPlugins => {
+                let _ = self.tx.try_send(ipc::Request::ReloadPlugins);
             }
         }
     }

@@ -185,8 +185,11 @@ fn get_matches(input: RString, state: &mut State) -> RVec<Match> {
                 return None;
             }
             let score = anyrun_helper::mazzy_matcher::fuzzy_match(name, input).unwrap_or(0)
-                + anyrun_helper::mazzy_matcher::fuzzy_match(package.meta.main_program.as_ref().unwrap(), input)
-                    .unwrap_or(0);
+                + anyrun_helper::mazzy_matcher::fuzzy_match(
+                    package.meta.main_program.as_ref().unwrap(),
+                    input,
+                )
+                .unwrap_or(0);
 
             if score > 0 {
                 Some((name, package, score))

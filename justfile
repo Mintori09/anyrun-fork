@@ -38,7 +38,12 @@ test target="all":
 #     done
 
 run:
-    cargo run -p anyrun
+    just build all
+    ./target/release/anyrun
+
+daemon:
+    just build all
+    ./target/release/anyrun daemon
 
 install:
     sudo cp ./target/release/anyrun /usr/bin
