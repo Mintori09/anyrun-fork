@@ -60,8 +60,7 @@ fn init(config_dir: RString) -> State {
 
     let connection = Connection::session().expect("Failed to connect to D-Bus");
 
-    let cached_history =
-        RwLock::new((Instant::now() - Duration::from_secs(60), Vec::new()));
+    let cached_history = RwLock::new((Instant::now() - Duration::from_secs(60), Vec::new()));
 
     State {
         config,

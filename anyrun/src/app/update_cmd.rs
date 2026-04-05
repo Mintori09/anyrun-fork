@@ -1,15 +1,12 @@
-use crate::{
-    config::Action,
-    plugin_box::PluginBoxInput,
-};
+use super::{App, AppMsg, AppWidgets, PostRunAction};
+use crate::{config::Action, plugin_box::PluginBoxInput};
 use anyrun_interface::HandleResult;
 use anyrun_provider_ipc as ipc;
+use gtk::prelude::*;
 use gtk::{gdk, glib};
 use gtk4 as gtk;
-use gtk::prelude::*;
 use relm4::prelude::*;
 use std::io::{self, Write};
-use super::{App, AppMsg, PostRunAction, AppWidgets};
 
 impl App {
     pub(super) fn handle_cmd_msg(
@@ -22,6 +19,7 @@ impl App {
         match message {
             ipc::Response::Ready { info } => {
                 let mut guard = self.plugins.guard();
+                guard.clear();
                 for info in info {
                     guard.push_back((info, self.config.clone()));
                 }

@@ -241,7 +241,8 @@ mod tests {
         assert_eq!(extract_address(d2), Some("00:11:22:33:44:55".to_string()));
 
         // With low battery (pango tags)
-        let d3 = "Status: Connected (00:11:22:33:44:55, Battery: <span foreground='red'>15%</span>)";
+        let d3 =
+            "Status: Connected (00:11:22:33:44:55, Battery: <span foreground='red'>15%</span>)";
         assert_eq!(extract_address(d3), Some("00:11:22:33:44:55".to_string()));
 
         // Invalid

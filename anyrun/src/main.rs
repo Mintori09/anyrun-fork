@@ -28,6 +28,7 @@ const INTERFACE_XML: &str = r#"
         </method>
         <method name="Close"></method>
         <method name="Quit"></method>
+        <method name="Reload"></method>
     </interface>
 </node>
 "#;
@@ -41,6 +42,7 @@ enum InterfaceMethod {
     Show(Show),
     Close,
     Quit,
+    Reload,
 }
 
 impl DBusMethodCall for InterfaceMethod {
@@ -57,6 +59,7 @@ impl DBusMethodCall for InterfaceMethod {
                 .ok_or_else(|| glib::Error::new(gio::DBusError::InvalidArgs, "Invalid args")),
             "Close" => Ok(Self::Close),
             "Quit" => Ok(Self::Quit),
+            "Reload" => Ok(Self::Reload),
             _ => Err(glib::Error::new(
                 gio::DBusError::UnknownMethod,
                 "Unknown method",
@@ -81,6 +84,7 @@ enum Command {
     Daemon,
     Close,
     Quit,
+    Reload,
 }
 
 struct DaemonState {
@@ -106,6 +110,10 @@ fn main() {
             }
             Command::Daemon => {
                 run_daemon(args);
+                return;
+            }
+            Command::Reload => {
+                fast_ipc_call("Reload");
                 return;
             }
         }
@@ -278,6 +286,10 @@ fn setup_dbus(app: &gtk::Application, state: Rc<RefCell<DaemonState>>) {
                             let _ = child.kill();
                         }
                         app.quit();
+                    }
+                    InterfaceMethod::Reload => {
+                        state.borrow().sender.emit(app::AppMsg::ReloadPlugins);
+                        invocation.return_value(None);
                     }
                 }
             }

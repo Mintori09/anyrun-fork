@@ -30,6 +30,16 @@ pub enum Request {
     },
     /// Close the provider
     Quit,
+    /// Reload plugin data (e.g. after desktop entries changed).
+    /// The provider should re-init all plugins and send back
+    /// a new `Ready` response with updated plugin infos.
+    ReloadPlugins,
+    /// Reload a specific plugin by name.
+    /// Useful when a plugin's config file changes.
+    ReloadPlugin {
+        /// The plugin name (e.g. "calc" for "calc.ron")
+        name: String,
+    },
 }
 
 /// Responses from provider to subscriber
@@ -102,5 +112,35 @@ impl Socket {
         self.inner.read_line(&mut self.recv_buf).await?;
 
         serde_json::from_str::<T>(&self.recv_buf).map_err(io::Error::other)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_reload_plugins_request_serializes() {
+        let req = Request::ReloadPlugins;
+        let json = serde_json::to_string(&req).unwrap();
+        let deserialized: Request = serde_json::from_str(&json).unwrap();
+        assert!(matches!(deserialized, Request::ReloadPlugins));
+    }
+
+    #[test]
+    fn test_all_request_variants_roundtrip() {
+        let requests = vec![
+            Request::Reset,
+            Request::Query {
+                text: "test".into(),
+            },
+            Request::Quit,
+            Request::ReloadPlugins,
+        ];
+        for req in requests {
+            let json = serde_json::to_string(&req).unwrap();
+            let deserialized: Request = serde_json::from_str(&json).unwrap();
+            assert_eq!(format!("{req:?}"), format!("{deserialized:?}"));
+        }
     }
 }

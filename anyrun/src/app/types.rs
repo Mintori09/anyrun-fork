@@ -56,6 +56,7 @@ pub enum AppMsg {
     PluginOutput(crate::plugin_box::PluginBoxOutput),
     Activate(Option<SendInvocation>),
     SyncShortcuts,
+    ReloadPlugins,
 }
 
 #[derive(Deserialize, Serialize, Clone)]

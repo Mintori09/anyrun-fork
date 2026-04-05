@@ -1,8 +1,8 @@
+use super::{App, AppInit, AppWidgets, DaemonContext, SendInvocation};
 use crate::plugin_box::{PluginBox, PluginBoxInput, PluginMatch};
-use gtk4 as gtk;
 use gtk::prelude::*;
+use gtk4 as gtk;
 use relm4::{ComponentBuilder, ComponentController};
-use super::{App, AppInit, DaemonContext, SendInvocation, AppWidgets};
 
 impl App {
     pub fn launch(
@@ -104,7 +104,8 @@ impl App {
 
                 // A match is only given a shortcut if it's below or at the current scroll top
                 // We use compute_bounds relative to the plugins container to get the absolute Y within the scroll area
-                let is_eligible = if let Some(bounds) = m.row.compute_bounds(widgets.plugins_box()) {
+                let is_eligible = if let Some(bounds) = m.row.compute_bounds(widgets.plugins_box())
+                {
                     let y = bounds.y() as f64;
                     // If the row's bottom is below the scroll top, it's visible in viewport
                     y + (bounds.height() as f64) > scroll_top
@@ -124,7 +125,8 @@ impl App {
                     shortcuts.push(None);
                 }
             }
-            self.plugins.send(i, PluginBoxInput::UpdateShortcuts(shortcuts));
+            self.plugins
+                .send(i, PluginBoxInput::UpdateShortcuts(shortcuts));
         }
     }
 }

@@ -1,12 +1,12 @@
+use super::{App, AppMsg, AppWidgets, PostRunAction, DEFAULT_CSS};
+use adw::prelude::*;
+use gtk::prelude::*;
 use gtk::{gdk, glib};
 use gtk4 as gtk;
-use gtk::prelude::*;
-use libadwaita as adw;
-use adw::prelude::*;
 use gtk4_layer_shell::{Edge, LayerShell};
+use libadwaita as adw;
 use relm4::prelude::*;
 use std::fs;
-use super::{App, AppMsg, PostRunAction, DEFAULT_CSS, AppWidgets};
 
 impl App {
     pub(super) fn handle_show(
@@ -72,7 +72,9 @@ impl App {
             widgets.main_box().set_halign(gtk::Align::Fill);
             widgets.main_box().set_margin_start(x);
             widgets.main_box().set_margin_top(y);
-            widgets.main_box().set_margin_end(mon_width as i32 - x - width);
+            widgets
+                .main_box()
+                .set_margin_end(mon_width as i32 - x - width);
             widgets
                 .main_box()
                 .set_margin_bottom(mon_height as i32 - y - height);
@@ -147,7 +149,9 @@ impl App {
         }
 
         if self.is_daemon {
-            let _ = self.tx.try_send(anyrun_provider_ipc::Request::Query { text: String::new() });
+            let _ = self.tx.try_send(anyrun_provider_ipc::Request::Query {
+                text: String::new(),
+            });
         }
     }
 }
