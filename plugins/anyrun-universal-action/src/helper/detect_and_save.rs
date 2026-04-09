@@ -12,7 +12,7 @@ pub fn detect_and_save(content: &str, filetype: InputCategory) {
         .expect("Cannot find Home directory")
         .join("Desktop");
 
-    let final_path = get_available_path(&desktop_path, "output", extension);
+    let final_path = get_available_path(&desktop_path, "untitled", extension);
 
     fs::write(&final_path, content).unwrap();
     println!("Saved sucessfully to: {:?}", final_path);

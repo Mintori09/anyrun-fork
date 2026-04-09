@@ -8,7 +8,9 @@ impl ActionTarget {
     pub fn run_action(&self, filetype: InputCategory, clipboard: &str) {
         match self {
             ActionTarget::Shell(cmd_template) => {
-                let cmd_script = cmd_template.replace("{clip}", clipboard);
+                let cmd_script = cmd_template
+                    .replace("{clip}", clipboard)
+                    .replace("{ext}", &filetype.get_extension());
                 let _ = std::process::Command::new("sh")
                     .arg("-c")
                     .arg(cmd_script)
