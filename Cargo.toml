@@ -15,6 +15,7 @@ members = [
   "plugins/anyrun-calc",
   "plugins/anyrun-findfiles",
   "plugins/anyrun-shell-wrapper",
+  "plugins/anyrun-shell-wrapper-once",
   "plugins/anyrun-universal-action",
   "plugins/anyrun-websearch",
   "plugins/anyrun-zoxide",
