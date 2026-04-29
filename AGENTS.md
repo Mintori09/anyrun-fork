@@ -136,17 +136,18 @@ type(scope): description
 ```
 
 Types: `feat`, `fix`, `refactor`, `style`, `docs`, `chore`
+
 - Lowercase description after type prefix
 - No period at end (inconsistent in history, but prefer without)
 - Scope is optional, in parentheses: `feat(bluetooth): display battery percentage`
 
 ## Key Crates
 
-| Crate | Path | Purpose |
-|---|---|---|
-| `anyrun` | `anyrun/` | Main binary: GTK4 UI, D-Bus IPC, config, plugin loading |
-| `anyrun-plugin` | `anyrun-plugin/` | Plugin SDK: re-exports types + proc-macro attributes |
-| `anyrun-macros` | `anyrun-macros/` | Proc-macros: `#[init]`, `#[info]`, `#[get_matches]`, `#[handler]` |
-| `anyrun-helper` | `anyrun-helper/` | Shared utils: icons, logging, fuzzy matcher, clipboard |
-| `anyrun-provider` | `anyrun-provider/` | Separate binary for search results via IPC |
-| `anyrun-provider-ipc` | `anyrun-provider/anyrun-provider-ipc/` | Shared IPC types |
+| Crate                 | Path                                   | Purpose                                                           |
+| --------------------- | -------------------------------------- | ----------------------------------------------------------------- |
+| `anyrun`              | `anyrun/`                              | Main binary: GTK4 UI, D-Bus IPC, config, plugin loading           |
+| `anyrun-plugin`       | `anyrun-plugin/`                       | Plugin SDK: re-exports types + proc-macro attributes              |
+| `anyrun-macros`       | `anyrun-macros/`                       | Proc-macros: `#[init]`, `#[info]`, `#[get_matches]`, `#[handler]` |
+| `anyrun-helper`       | `anyrun-helper/`                       | Shared utils: icons, logging, fuzzy matcher, clipboard            |
+| `anyrun-provider`     | `anyrun-provider/`                     | Separate binary for search results via IPC                        |
+| `anyrun-provider-ipc` | `anyrun-provider/anyrun-provider-ipc/` | Shared IPC types                                                  |
