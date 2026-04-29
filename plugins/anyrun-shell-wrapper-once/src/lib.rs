@@ -36,10 +36,29 @@ pub struct State {
 fn init(config_dir: RString) -> State {
     let config_path = PathBuf::from(config_dir.to_string()).join("shell_wrapper_once.ron");
 
-    let config = fs::read_to_string(&config_path)
-        .ok()
-        .and_then(|content| ron::from_str::<Config>(&content).ok())
-        .unwrap_or_default();
+    let config = match fs::read_to_string(&config_path) {
+        Ok(content) => match ron::from_str::<Config>(&content) {
+            Ok(config) => config,
+            Err(error) => {
+                notify_error(
+                    "Shell Wrapper Once",
+                    &format!("Failed to parse config:\n{}", error),
+                );
+                Config::default()
+            }
+        },
+        Err(error) => {
+            notify_error(
+                "Shell Wrapper Once",
+                &format!(
+                    "Failed to read config:\n{}\n\nPath: {}",
+                    error,
+                    config_path.display()
+                ),
+            );
+            Config::default()
+        }
+    };
 
     State { config }
 }
@@ -56,7 +75,7 @@ fn info() -> PluginInfo {
 fn get_matches(input: RString, state: &State) -> RVec<Match> {
     let input_str = input.to_string();
 
-    for (_index, scope) in state.config.scopes.iter().enumerate() {
+    for (index, scope) in state.config.scopes.iter().enumerate() {
         if let Some(query) = strip_prefix_case_insensitive(&input_str, &scope.prefix) {
             let query = query.trim();
 
@@ -67,7 +86,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
             let item = Match {
                 title: query.into(),
                 description: ROption::RSome(scope.description.clone().into()),
-                id: ROption::RNone,
+                id: ROption::RSome(index as u64),
                 icon: ROption::RSome(SystemIcon::Settings.as_str().into()),
                 use_pango: false,
             };
@@ -84,14 +103,23 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
 #[handler]
 fn handler(selection: Match, state: &State) -> HandleResult {
     let ROption::RSome(id) = selection.id else {
+        notify_error("Shell Wrapper Once", "Missing selection id.");
         return HandleResult::Close;
     };
 
     let Ok(index) = id.to_string().parse::<usize>() else {
+        notify_error(
+            "Shell Wrapper Once",
+            &format!("Invalid selection id: {}", id),
+        );
         return HandleResult::Close;
     };
 
     let Some(scope) = state.config.scopes.get(index) else {
+        notify_error(
+            "Shell Wrapper Once",
+            &format!("Scope index out of range: {}", index),
+        );
         return HandleResult::Close;
     };
 
@@ -104,7 +132,12 @@ fn handler(selection: Match, state: &State) -> HandleResult {
         format!("{} {}", scope.command, escaped_query)
     };
 
-    execute_command(&cmd);
+    if let Err(error) = execute_command(&cmd) {
+        notify_error(
+            "Shell Wrapper Once",
+            &format!("Failed to spawn command:\n{}\n\nCommand:\n{}", error, cmd),
+        );
+    }
 
     HandleResult::Close
 }
@@ -139,11 +172,19 @@ fn shell_escape_single_arg(value: &str) -> String {
     escaped
 }
 
-fn execute_command(cmd: &str) {
+fn execute_command(cmd: &str) -> std::io::Result<()> {
     let mut command = Command::new("sh");
     terminal::configure_terminal_environment(&mut command);
 
-    if let Err(error) = command.arg("-c").arg(cmd).spawn() {
-        eprintln!("[Shell Wrapper Once] Failed to spawn command: {}", error);
-    }
+    command.arg("-c").arg(cmd).spawn()?;
+    Ok(())
+}
+
+fn notify_error(title: &str, message: &str) {
+    let _ = Command::new("notify-send")
+        .arg("-u")
+        .arg("critical")
+        .arg(title)
+        .arg(message)
+        .spawn();
 }
