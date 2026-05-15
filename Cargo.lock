@@ -14,7 +14,7 @@ dependencies = [
  "core_extensions",
  "crossbeam-channel",
  "generational-arena",
- "libloading",
+ "libloading 0.7.4",
  "lock_api",
  "parking_lot",
  "paste",
@@ -179,9 +179,11 @@ dependencies = [
  "anyrun-provider-ipc",
  "chrono",
  "clap",
+ "gdk4-wayland",
  "gtk4",
  "gtk4-layer-shell",
  "libadwaita",
+ "libloading 0.8.9",
  "relm4",
  "ron 0.12.0",
  "serde",
@@ -1784,6 +1786,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "gdk4-wayland"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcb81f3e1e7d9dac156e91a9dc81be33d8c99338975254ed93ca9f1de5cb3168"
+dependencies = [
+ "gdk4",
+ "gdk4-wayland-sys",
+ "gio",
+ "glib",
+ "libc",
+]
+
+[[package]]
+name = "gdk4-wayland-sys"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d739aa4ae9a1abb15f01ab2d8b8dd14a7792104ffb60bbc09bb94d76b905cfeb"
+dependencies = [
+ "glib-sys",
+ "libc",
+ "system-deps",
+]
+
+[[package]]
 name = "generational-arena"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2761,6 +2787,16 @@ checksum = "b67380fd3b2fbe7527a606e18729d21c6f3951633d0500574c4dc22d2d638b9f"
 dependencies = [
  "cfg-if",
  "winapi",
+]
+
+[[package]]
+name = "libloading"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
+dependencies = [
+ "cfg-if",
+ "windows-link 0.2.1",
 ]
 
 [[package]]

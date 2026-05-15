@@ -47,6 +47,18 @@ impl Component for App {
 
             connect_realize[sender] => move |win| {
                 let surface = win.surface().unwrap();
+
+                // Request KDE blur behind the window (runtime-safe)
+                if let Some(wt) = surface.downcast_ref::<gdk4_wayland::WaylandToplevel>() {
+                    type BlurFn = unsafe extern "C" fn(*mut std::ffi::c_void, i32);
+                    if let Ok(lib) = unsafe { libloading::Library::new("libgdk-4.0.so.0") } {
+                        if let Ok(func) = unsafe { lib.get::<BlurFn>(b"gdk_wayland_toplevel_set_blur\0") } {
+                            let ptr = gtk::glib::translate::ToGlibPtr::<*mut gdk4_wayland::ffi::GdkWaylandToplevel>::to_glib_none(wt).0;
+                            unsafe { func(ptr as *mut std::ffi::c_void, 1) };
+                        }
+                    }
+                }
+
                 let sender = sender.clone();
                 surface.connect_enter_monitor(move |_, monitor| {
                     sender.input(AppMsg::Show {
@@ -106,11 +118,14 @@ impl Component for App {
                     },
 
                     #[local_ref]
-                    plugins_widget -> gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_can_focus: false,
+                    matches_list -> gtk::ListBox {
                         set_css_classes: &["matches"],
                         set_hexpand: true,
+                        set_can_focus: false,
+
+                        connect_row_selected => move |_list, _row| {
+                            // track selected index on mouse click
+                        }
                     }
                 },
 
@@ -147,7 +162,7 @@ impl Component for App {
         root: Self::Root,
         sender: relm4::ComponentSender<Self>,
     ) -> relm4::ComponentParts<Self> {
-        let (model, config, _config_dir, _css_provider, plugins_widget) = Self::init_model(init, &root, sender.clone());
+        let (model, config, _config_dir, _css_provider, matches_list) = Self::init_model(init, &root, sender.clone());
 
         let widgets = view_output!();
         widgets.entry().set_placeholder_text(Some("Search"));
@@ -188,8 +203,8 @@ impl AppWidgets {
     pub(super) fn main_box(&self) -> &gtk::Box {
         &self._main
     }
-    pub(super) fn plugins_box(&self) -> &gtk::Box {
-        &self.plugins_widget
+    pub(super) fn matches_list(&self) -> &gtk::ListBox {
+        &self.matches_list
     }
     pub(super) fn footer(&self) -> &gtk::Box {
         &self._footer
