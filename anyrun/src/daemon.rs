@@ -1,12 +1,12 @@
-use gtk4::{gio, prelude::*};
-use std::path::PathBuf;
-use std::sync::Arc;
 use crate::app;
 use crate::args::Args;
 use crate::dbus::{setup_dbus, DaemonState};
+use gtk4::{gio, prelude::*};
 use relm4::ComponentController;
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn run_daemon(args: Args) {
     let app = gtk4::Application::new(Some("org.anyrun.anyrun"), gio::ApplicationFlags::IS_SERVICE);

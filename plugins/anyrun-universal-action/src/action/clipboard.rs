@@ -10,15 +10,12 @@ use crate::helper::detect_and_save::call_magika;
 
 static COLOR_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$").unwrap());
-static EMAIL_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap()
-});
-static IPV4_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^(\d{1,3}\.){3}\d{1,3}(:\d+)?$").unwrap());
+static EMAIL_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap());
+static IPV4_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(\d{1,3}\.){3}\d{1,3}(:\d+)?$").unwrap());
 static IPV6_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$").unwrap());
-static URL_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^(https?|ftp|file)://").unwrap());
+static URL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(https?|ftp|file)://").unwrap());
 
 impl InputCategory {
     pub fn classify_clipboard() -> (InputCategory, String) {

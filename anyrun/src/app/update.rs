@@ -45,7 +45,8 @@ impl App {
                         let adj = widgets.scroll().vadjustment();
                         let scroll_top = adj.value();
 
-                        let eligible_matches: Vec<_> = self.matches
+                        let eligible_matches: Vec<_> = self
+                            .matches
                             .iter()
                             .enumerate()
                             .filter(|(_, m)| {
@@ -110,7 +111,8 @@ impl App {
                     }
                     Action::Down | Action::Up => {
                         let global_idx = {
-                            let visible_matches: Vec<_> = self.matches
+                            let visible_matches: Vec<_> = self
+                                .matches
                                 .iter()
                                 .enumerate()
                                 .filter(|(_, m)| m.row.get_visible())

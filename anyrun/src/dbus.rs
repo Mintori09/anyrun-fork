@@ -1,8 +1,8 @@
+use crate::app;
+use gio::prelude::DBusMethodCall;
 use gtk4::{gio, glib, prelude::*};
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::app;
-use gio::prelude::DBusMethodCall;
 
 pub const INTERFACE_XML: &str = r#"
 <node>
