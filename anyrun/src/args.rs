@@ -1,6 +1,6 @@
+use crate::config::ConfigArgs;
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
-use crate::config::ConfigArgs;
 
 #[derive(Parser, Clone, Debug, Serialize, Deserialize)]
 #[command(version, about)]

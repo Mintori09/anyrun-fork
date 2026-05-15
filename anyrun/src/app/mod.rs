@@ -172,7 +172,8 @@ impl Component for App {
         root: Self::Root,
         sender: relm4::ComponentSender<Self>,
     ) -> relm4::ComponentParts<Self> {
-        let (model, config, _config_dir, _css_provider, matches_list) = Self::init_model(init, &root, sender.clone());
+        let (model, config, _config_dir, _css_provider, matches_list) =
+            Self::init_model(init, &root, sender.clone());
 
         let widgets = view_output!();
         widgets.entry().set_placeholder_text(Some("Search"));

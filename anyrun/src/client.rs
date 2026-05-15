@@ -1,14 +1,14 @@
-use gtk4::{gio, glib, prelude::*};
-use std::io::{self, IsTerminal, Read, Write};
-use std::time::Instant;
-use std::sync::Arc;
 use crate::app;
 use crate::args::Args;
 use crate::dbus::setup_dbus;
-use relm4::ComponentController;
-use std::rc::Rc;
-use std::cell::RefCell;
 use crate::dbus::DaemonState;
+use gtk4::{gio, glib, prelude::*};
+use relm4::ComponentController;
+use std::cell::RefCell;
+use std::io::{self, IsTerminal, Read, Write};
+use std::rc::Rc;
+use std::sync::Arc;
+use std::time::Instant;
 
 pub fn run_client(args: Args) {
     let time = Instant::now();
