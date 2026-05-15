@@ -28,6 +28,8 @@ impl App {
         self.settled_once = true;
         self.clear_pending_visual_state(widgets);
 
+        self.selected_index = 0;
+        widgets.scroll().vadjustment().set_value(0.0);
         let matches = self.combined_matches();
         if let Some((plugin, plugin_match)) = matches.first() {
             plugin.matches.widget().select_row(Some(&plugin_match.row));
@@ -52,6 +54,8 @@ impl App {
                 if self.batch_flushing_results {
                     return;
                 }
+                self.selected_index = 0;
+                widgets.scroll().vadjustment().set_value(0.0);
                 self.apply_results_layout(widgets, root, self.settled_once);
 
                 let matches = self.combined_matches();

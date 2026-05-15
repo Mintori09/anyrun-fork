@@ -135,7 +135,7 @@ impl Component for App {
                         set_css_classes: &["footer", "hints"],
                         set_halign: gtk::Align::End,
                         set_xalign: 1.0,
-                        set_label: "↑↓ select · Enter open · Esc close",
+                        set_label: "↑↓ select · Enter open · Ctrl+R reload · Esc close",
                     }
                 }
             }

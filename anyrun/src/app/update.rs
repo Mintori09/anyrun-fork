@@ -1,12 +1,15 @@
-use super::{App, AppMsg, AppWidgets, PostRunAction, SendInvocation};
-use crate::config::{Action, Keybind};
+use super::{App, AppMsg, AppWidgets, PostRunAction, SendInvocation, DEFAULT_CSS};
+use crate::config::{Action, Config, Keybind};
 use anyrun_provider_ipc as ipc;
 use anyrun_provider_ipc::QueryPhase;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use gtk4 as gtk;
 use relm4::prelude::*;
+use std::fs;
 use std::io::{self, Write};
+use std::sync::Arc;
+use std::time::SystemTime;
 
 impl App {
     pub(super) fn handle_window_msg(
@@ -160,10 +163,76 @@ impl App {
                             });
                         }
                     }
+                    Action::ReloadConfig => {
+                        if let Some(config_dir) = &self.config_dir {
+                            // 1. Reload config.ron
+                            let new_config = match fs::read(format!("{config_dir}/config.ron")) {
+                                Ok(content) => {
+                                    ron::de::from_bytes(&content).unwrap_or_else(|why| {
+                                        eprintln!("[anyrun] Failed to parse config: {why}");
+                                        Config::default()
+                                    })
+                                }
+                                Err(why) => {
+                                    eprintln!("[anyrun] Failed to read config: {why}");
+                                    Config::default()
+                                }
+                            };
+                            self.config = Arc::new(new_config);
+
+                            // 2. Reload style.css
+                            match fs::read_to_string(format!("{config_dir}/style.css")) {
+                                Ok(css) => {
+                                    self.css_provider.load_from_string(&css);
+                                    self.last_css_load = Some(SystemTime::now());
+                                }
+                                Err(why) => {
+                                    eprintln!("[anyrun] Failed to load CSS: {why}");
+                                    self.css_provider.load_from_string(DEFAULT_CSS);
+                                    self.last_css_load = Some(SystemTime::now());
+                                }
+                            }
+                        }
+
+                        // 3. Clear stale state
+                        self.pending_matches.clear();
+                        self.pending_flush_scheduled = false;
+                        self.batch_flushing_results = false;
+                        self.selected_index = 0;
+                        self.selected_plugin_index = None;
+
+                        // 4. Reload plugins with new config
+                        let _ = self.tx.try_send(ipc::Request::ReloadPlugins);
+
+                        // 5. Re-search with current input
+                        let _ = self.tx.try_send(ipc::Request::Query {
+                            text: self.current_input.clone(),
+                            phase: QueryPhase::Settling,
+                            plugins: Vec::new(),
+                        });
+
+                        // 6. Re-apply window geometry
+                        if let Some(surface) = root.surface() {
+                            let display = gtk::prelude::WidgetExt::display(root);
+                            if let Some(monitor) = display.monitor_at_surface(&surface) {
+                                let geo = monitor.geometry();
+                                self.handle_show(
+                                    widgets,
+                                    geo.width() as u32,
+                                    geo.height() as u32,
+                                    root,
+                                );
+                            }
+                        }
+                    }
                 }
             }
             AppMsg::EntryChanged(text) => {
                 self.selected_index = 0;
+                widgets.scroll().vadjustment().set_value(0.0);
+                for plugin in self.plugins.iter() {
+                    plugin.matches.widget().unselect_all();
+                }
                 self.current_input = text.clone();
                 self.search_epoch = self.search_epoch.wrapping_add(1);
                 self.settle_animation_epoch = None;
