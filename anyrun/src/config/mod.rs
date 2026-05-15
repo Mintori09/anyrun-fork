@@ -38,6 +38,8 @@ pub struct Config {
     #[serde(default)]
     pub close_on_click: bool,
     #[serde(default)]
+    pub close_on_unfocus: bool,
+    #[serde(default)]
     pub show_results_immediately: bool,
     #[serde(default)]
     pub max_entries: Option<u32>,
@@ -188,6 +190,7 @@ impl Default for Config {
             hide_plugin_info: true,
             ignore_exclusive_zones: false,
             close_on_click: false,
+            close_on_unfocus: false,
             show_results_immediately: false,
             max_entries: None,
             search_ux: SearchUxConfig::default(),

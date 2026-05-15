@@ -76,6 +76,14 @@ impl Component for App {
                 }
             },
 
+            add_controller = gtk::EventControllerFocus {
+                connect_leave[sender, config] => move |_| {
+                    if config.close_on_unfocus {
+                        sender.input(AppMsg::Action(crate::config::Action::Close));
+                    }
+                }
+            },
+
             #[name = "_main"]
             gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
