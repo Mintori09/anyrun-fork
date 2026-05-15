@@ -1,97 +1,182 @@
-@define-color bg-color rgba(30, 30, 30, 0.65);
-@define-color bg-selected #0058d0; /* macOS Blue */
-@define-color border-color rgba(255, 255, 255, 0.15);
-@define-color fg-color #ffffff;
-@define-color desc-color #a1a1aa;
+/* ── Palette ───────────────────────────────────────────── */
+@define-color accent      #5599d2;
+@define-color bg-color    rgba(28, 28, 30, 0.95);
+@define-color fg-color    rgba(255, 255, 255, 0.92);
+@define-color fg-muted    rgba(255, 255, 255, 0.55);
+@define-color border-clr  rgba(255, 255, 255, 0.10);
+@define-color item-hover  rgba(255, 255, 255, 0.06);
+@define-color item-sel    rgba(85, 153, 210, 0.18);
 
+/* ── Window ─────────────────────────────────────────────── */
 window {
-  background: transparent;
+    background: transparent;
 }
 
+/* ── Main container ─────────────────────────────────────── */
 box.main {
-  padding: 12px;
-  border-radius: 16px;
-  border: 1px solid @border-color;
-  background-color: @bg-color;
-  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.5);
+    margin: 0;
+    padding: 0;
+    border-radius: 14px;
+    border: 0.5px solid @border-clr;
+    background-color: @bg-color;
+    box-shadow:
+        0 32px 64px rgba(0, 0, 0, 0.55),
+        0 8px 24px rgba(0, 0, 0, 0.35),
+        inset 0 0.5px 0 rgba(255, 255, 255, 0.08);
 }
 
-/* Search Entry */
+/* ── Search entry ───────────────────────────────────────── */
 text {
-  min-height: 48px;
-  padding: 0 16px;
-  border-radius: 8px;
-  color: @fg-color;
-  font-size: 26px; /* Large font for search bar */
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  margin-bottom: 8px; /* Space between input and results */
+    min-height: 52px;
+    padding: 0 18px;
+    font-size: 18px;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    color: @fg-color;
+    caret-color: @accent;
+    border-bottom: 0.5px solid @border-clr;
 }
 
-text:focus {
-  border: none;
-  box-shadow: none;
-}
-
+/* ── Results container ──────────────────────────────────── */
 .matches {
-  background: transparent;
+    background: transparent;
+    padding: 6px 0 8px;
+    transition: opacity 100ms ease;
 }
 
+/* ── Search pending dim ─────────────────────────────────── */
+.search-pending {
+    opacity: 0.65;
+    transition: opacity 100ms ease;
+}
+
+/* ── Plugin group ───────────────────────────────────────── */
 box.plugin {
-  background: transparent;
+    padding: 0;
+    margin: 0;
 }
 
-list.plugin {
-  background: transparent;
+box.plugin:not(:first-child) {
+    border-top: 0.5px solid @border-clr;
+    margin-top: 4px;
+    padding-top: 2px;
 }
 
-label.match {
-  font-size: 16px;
-  color: @fg-color;
-  margin-bottom: 2px;
+/* Plugin header row */
+box.plugin > box.info {
+    padding: 7px 18px 3px;
+    min-width: 0;
 }
 
-label.match.description {
-  font-size: 12px;
-  color: @desc-color;
-}
-
-label.match.shortcut {
-  font-size: 12px;
-  color: @desc-color;
-  background-color: rgba(255, 255, 255, 0.1);
-  padding: 2px 6px;
-  border-radius: 4px;
-  margin-left: 8px;
+image.plugin.info {
+    min-width: 14px;
+    min-height: 14px;
+    opacity: 0.45;
+    -gtk-icon-size: 14px;
 }
 
 label.plugin.info {
-  font-size: 11px;
-  font-weight: bold;
-  color: @desc-color;
-  text-transform: uppercase;
-  margin-bottom: 4px;
-  margin-left: 8px;
-  letter-spacing: 0.05em;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: @fg-muted;
+    padding-left: 6px;
 }
 
-.match {
-  background: transparent;
-  padding: 8px 12px;
-  border-radius: 6px;
-  margin: 2px 0;
-  transition: all 0.1s ease-out;
+/* ── Plugin list ────────────────────────────────────────── */
+list.plugin {
+    background: transparent;
 }
 
-.match:selected {
-  background-color: @bg-selected;
+/* ── Individual match row ───────────────────────────────── */
+box.match {
+    padding: 6px 18px;
+    border-radius: 0;
+    background: transparent;
+    transition: background 80ms ease;
 }
 
-.match:selected label.match {
-  color: white;
+row.match {
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+    transition: background 80ms ease;
 }
 
-.match:selected label.match.description {
-  color: rgba(255, 255, 255, 0.8);
+row.match:hover {
+    background-color: @item-hover;
+}
+
+/* Selected state — left accent bar via border-left */
+row.match:selected,
+row.match:focus {
+    background-color: @item-sel;
+    border-left: 3px solid @accent;
+    animation: slide-in 80ms ease;
+}
+
+@keyframes slide-in {
+    from {
+        opacity: 0;
+        transform: translateX(-3px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* ── Match icon ─────────────────────────────────────────── */
+image.match {
+    min-width: 32px;
+    min-height: 32px;
+    -gtk-icon-size: 32px;
+    border-radius: 7px;
+    margin-right: 12px;
+}
+
+/* ── Match text ─────────────────────────────────────────── */
+label.match {
+    font-size: 14px;
+    font-weight: 400;
+    color: @fg-color;
+    letter-spacing: -0.005em;
+}
+
+row.match:selected label.match,
+row.match:focus label.match {
+    color: #ffffff;
+}
+
+row.match:selected label.match.description,
+row.match:focus label.match.description {
+    color: @fg-muted;
+}
+
+label.match.description {
+    font-size: 12px;
+    font-weight: 400;
+    color: @fg-muted;
+    margin-top: 1px;
+}
+
+@define-color meta-color rgba(255, 255, 255, 0.46);
+box.footer {
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 8px 16px 10px;
+    margin-top: 4px;
+}
+
+label.footer {
+    font-size: 11px;
+    color: @meta-color;
+}
+
+label.footer.count {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+label.footer.hints {
+    color: rgba(255, 255, 255, 0.58);
 }

@@ -94,7 +94,7 @@ pub fn worker_connect(
             let stream = loop {
                 match tokio::net::UnixStream::connect(&socket_path).await {
                     Ok(stream) => break stream,
-                    Err(e) if attempts < 10 => {
+                    Err(_e) if attempts < 10 => {
                         attempts += 1;
                         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
                     }

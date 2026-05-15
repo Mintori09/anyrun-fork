@@ -11,6 +11,12 @@ use tokio::{
 pub const CONFIG_DIRS: &[&str] = &["/etc/xdg/anyrun", "/etc/anyrun"];
 pub const PLUGIN_PATHS: &[&str] = &["/usr/lib/anyrun", "/etc/anyrun/plugins"];
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum QueryPhase {
+    Typing,
+    Settling,
+}
+
 /// Requests from subscriber to provider
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Request {
@@ -22,6 +28,10 @@ pub enum Request {
     Query {
         /// The text to send to the plugins
         text: String,
+        /// Search phase for the query.
+        phase: QueryPhase,
+        /// Limit execution to these plugin names when non-empty.
+        plugins: Vec<String>,
     },
     /// Handle a selection using a plugin
     Handle {
@@ -133,6 +143,8 @@ mod tests {
             Request::Reset,
             Request::Query {
                 text: "test".into(),
+                phase: QueryPhase::Typing,
+                plugins: vec!["Applications".into()],
             },
             Request::Quit,
             Request::ReloadPlugins,

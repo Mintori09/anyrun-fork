@@ -169,7 +169,6 @@ pub fn init(config_dir: RString) -> State {
             })
     });
 
-    // Tối ưu bộ nhớ: Chuẩn bị sẵn dữ liệu tìm kiếm
     let mut search_entries = Vec::with_capacity(raw_entries.len());
     let mut entry_map = HashMap::with_capacity(raw_entries.len());
 
@@ -221,7 +220,6 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
     let input_lc = input.to_lowercase();
     let input_trimmed = input_lc.trim();
 
-    let matcher = fuzzy_matcher::skim::SkimMatcherV2::default();
     let tokens: Vec<String> = input_trimmed
         .split_whitespace()
         .map(|s| s.to_string())
@@ -231,86 +229,91 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
     const ACTION_VERBS: &[&str] = &["quit", "close", "exit", "kill", "stop", "restart"];
     let has_action_verb = tokens.iter().any(|t| ACTION_VERBS.contains(&t.as_str()));
 
-    let mut scored_results: Vec<(u64, i64)> = state
-        .search_entries
-        .iter()
-        .filter_map(|se| {
-            let mut score = 0;
-            if !tokens.is_empty() {
-                for (i, token) in tokens.iter().enumerate() {
-                    let token_na = &tokens_na[i];
+    thread_local! {
+        static MATCHER: fuzzy_matcher::skim::SkimMatcherV2 = fuzzy_matcher::skim::SkimMatcherV2::default();
+    }
 
-                    let s_title = matcher
-                        .fuzzy_match(&se.title_lc, token)
-                        .or_else(|| matcher.fuzzy_match(&se.title_na, token_na))
-                        .unwrap_or(0);
-                    let s_name = matcher
-                        .fuzzy_match(&se.name_lc, token)
-                        .or_else(|| matcher.fuzzy_match(&se.name_na, token_na))
-                        .unwrap_or(0);
-                    let s_desc = se
-                        .desc_lc
-                        .as_ref()
-                        .and_then(|d| {
-                            matcher.fuzzy_match(d, token).or_else(|| {
-                                matcher.fuzzy_match(se.desc_na.as_ref().unwrap(), token_na)
+    let results: Vec<Match> = MATCHER.with(|matcher| {
+        let mut scored_results: Vec<(u64, i64)> = state
+            .search_entries
+            .iter()
+            .filter_map(|se| {
+                let mut score = 0;
+                if !tokens.is_empty() {
+                    for (i, token) in tokens.iter().enumerate() {
+                        let token_na = &tokens_na[i];
+
+                        let s_title = matcher
+                            .fuzzy_match(&se.title_lc, token)
+                            .or_else(|| matcher.fuzzy_match(&se.title_na, token_na))
+                            .unwrap_or(0);
+                        let s_name = matcher
+                            .fuzzy_match(&se.name_lc, token)
+                            .or_else(|| matcher.fuzzy_match(&se.name_na, token_na))
+                            .unwrap_or(0);
+                        let s_desc = se
+                            .desc_lc
+                            .as_ref()
+                            .and_then(|d| {
+                                matcher.fuzzy_match(d, token).or_else(|| {
+                                    matcher.fuzzy_match(se.desc_na.as_ref().unwrap(), token_na)
+                                })
                             })
-                        })
-                        .unwrap_or(0);
+                            .unwrap_or(0);
 
-                    let s_key = se
-                        .keywords_lc
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(ki, k)| {
-                            matcher
-                                .fuzzy_match(k, token)
-                                .or_else(|| matcher.fuzzy_match(&se.keywords_na[ki], token_na))
-                        })
-                        .max()
-                        .unwrap_or(0);
+                        let s_key = se
+                            .keywords_lc
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(ki, k)| {
+                                matcher
+                                    .fuzzy_match(k, token)
+                                    .or_else(|| matcher.fuzzy_match(&se.keywords_na[ki], token_na))
+                            })
+                            .max()
+                            .unwrap_or(0);
 
-                    let best = s_title.max(s_name).max(s_desc).max(s_key);
-                    if best == 0 {
-                        return None;
+                        let best = s_title.max(s_name).max(s_desc).max(s_key);
+                        if best == 0 {
+                            return None;
+                        }
+
+                        score += s_title * 10 + s_name * 8 + s_desc * 5 + s_key * 3;
                     }
-
-                    score += s_title * 10 + s_name * 8 + s_desc * 5 + s_key * 3;
-                }
-            } else {
-                // If input is empty, return neutral score
-                // Anyrun-provider will handle sorting by frecency globally
-                score = 1;
-            }
-
-            score -= se.offset;
-            if se.is_action {
-                score = if has_action_verb {
-                    score * 3
                 } else {
-                    score / 2
-                };
-            }
+                    score = 1;
+                }
 
-            if score > 0 {
-                Some((se.id, score))
-            } else {
-                None
-            }
-        })
-        .collect();
+                score -= se.offset;
+                if se.is_action {
+                    score = if has_action_verb {
+                        score * 3
+                    } else {
+                        score / 2
+                    };
+                }
 
-    // Sắp xếp theo score giảm dần
-    scored_results.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+                if score > 0 {
+                    Some((se.id, score))
+                } else {
+                    None
+                }
+            })
+            .collect();
 
-    scored_results
-        .into_iter()
-        .take(state.config.max_entries.max(50)) // Return enough for provider to re-sort
-        .map(|(id, _)| {
-            let entry = &state.entry_map[&id];
-            make_match(entry, id, &state.config)
-        })
-        .collect()
+        scored_results.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+
+        scored_results
+            .into_iter()
+            .take(state.config.max_entries.max(50))
+            .map(|(id, _)| {
+                let entry = &state.entry_map[&id];
+                make_match(entry, id, &state.config)
+            })
+            .collect()
+    });
+
+    results.into()
 }
 
 // Hàm helper để tránh lặp code và giảm clone

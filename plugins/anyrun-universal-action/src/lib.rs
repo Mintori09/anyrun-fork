@@ -40,6 +40,7 @@ fn default_max_entries() -> usize {
 }
 
 pub struct State {
+    has_magika: bool,
     filetype: RwLock<InputCategory>,
     config: Config,
     actions: Vec<UniversalAction>,
@@ -77,6 +78,7 @@ fn init(config_dir: RString) -> State {
     let (filetype, clipboard) = InputCategory::classify_clipboard();
 
     State {
+        has_magika: which("magika").is_ok(),
         filetype: RwLock::new(filetype),
         clipboard: RwLock::new(clipboard),
         config,
@@ -94,7 +96,7 @@ fn info() -> PluginInfo {
 
 #[get_matches]
 fn get_matches(input: RString, state: &State) -> RVec<Match> {
-    if which("magika").is_err() {
+    if !state.has_magika {
         let _ = Notification::new()
             .summary("Dependency Missing")
             .body("The 'magika' binary was not found on your system PATH.")
@@ -112,13 +114,9 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
 
     let is_initial_view = query.is_empty();
 
-    if is_initial_view {
-        let (new_filetype, new_clipboard) = InputCategory::classify_clipboard();
-        let mut filetype_lock = state.filetype.write().unwrap();
-        let mut clipboard_lock = state.clipboard.write().unwrap();
-        *filetype_lock = new_filetype;
-        *clipboard_lock = new_clipboard;
-    }
+    let (new_filetype, new_clipboard) = InputCategory::classify_clipboard();
+    *state.filetype.write().unwrap() = new_filetype;
+    *state.clipboard.write().unwrap() = new_clipboard;
 
     let limit = if is_initial_view {
         10
@@ -239,6 +237,7 @@ fn test_read_config() {
 
     let (filetype, clipboard) = InputCategory::classify_clipboard();
     let state = State {
+        has_magika: which("magika").is_ok(),
         filetype: RwLock::new(filetype),
         clipboard: RwLock::new(clipboard),
         config,

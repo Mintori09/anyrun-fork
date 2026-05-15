@@ -1,10 +1,9 @@
 use super::{App, AppMsg, AppWidgets, PostRunAction, DEFAULT_CSS};
-use adw::prelude::*;
+use anyrun_provider_ipc::QueryPhase;
+use gtk::gdk;
 use gtk::prelude::*;
-use gtk::{gdk, glib};
 use gtk4 as gtk;
 use gtk4_layer_shell::{Edge, LayerShell};
-use libadwaita as adw;
 use relm4::prelude::*;
 use std::fs;
 
@@ -16,48 +15,10 @@ impl App {
         mon_height: u32,
         root: &gtk::Window,
     ) {
-        // let half_height = (mon_height / 2) as i32;
-        let matches = self.combined_matches();
-        if matches.is_empty() {
-            widgets.scroll().set_min_content_height(0);
-            widgets.scroll().set_max_content_height(0);
-            widgets.scroll().set_visible(false);
-        } else {
-            let target_height = self.config.max_height.to_val(mon_height);
-            widgets.scroll().set_visible(true);
-
-            if let Some(anim) = self.height_animation.take() {
-                anim.pause();
-            }
-
-            let target = adw::CallbackAnimationTarget::new(glib::clone!(
-                #[weak(rename_to = scroll)]
-                widgets.scroll(),
-                move |value| {
-                    let val = value as i32;
-                    let old_max = scroll.max_content_height();
-                    if val > old_max {
-                        scroll.set_max_content_height(val);
-                        scroll.set_min_content_height(val);
-                    } else {
-                        scroll.set_min_content_height(val);
-                        scroll.set_max_content_height(val);
-                    }
-                }
-            ));
-
-            let anim = adw::TimedAnimation::builder()
-                .widget(widgets.scroll())
-                .duration(200)
-                .easing(adw::Easing::EaseOutQuart)
-                .value_from(0.0)
-                .value_to(target_height as f64)
-                .target(&target)
-                .build();
-
-            anim.play();
-            self.height_animation = Some(anim);
-        }
+        let target_height = self.config.height.to_val(mon_height);
+        widgets.scroll().set_min_content_height(target_height);
+        widgets.scroll().set_max_content_height(target_height);
+        widgets.scroll().set_visible(true);
 
         let width = self.config.width.to_val(mon_width);
         let x = self.config.x.to_val(mon_width) - width / 2;
@@ -65,7 +26,9 @@ impl App {
         let y = self.config.y.to_val(mon_height) - height / 2;
 
         root.set_anchor(Edge::Left, true);
+        root.set_anchor(Edge::Right, true);
         root.set_anchor(Edge::Top, true);
+        root.set_anchor(Edge::Bottom, true);
 
         if self.config.close_on_click {
             root.set_default_size(mon_width as i32, mon_height as i32);
@@ -79,11 +42,14 @@ impl App {
                 .main_box()
                 .set_margin_bottom(mon_height as i32 - y - height);
         } else {
-            root.set_default_size(width, height);
-            root.child().unwrap().set_size_request(width, height);
-            root.set_margin(Edge::Left, x);
-            root.set_margin(Edge::Top, y);
+            let margin_top = (mon_height as i32 - height) / 3;
+            let margin_side = (mon_width as i32 - width) / 2;
+            root.set_margin(Edge::Left, margin_side);
+            root.set_margin(Edge::Right, margin_side);
+            root.set_margin(Edge::Top, margin_top);
+            root.set_margin(Edge::Bottom, mon_height as i32 - margin_top - height);
         }
+
         root.set_opacity(1.0); // Continuation of the Sway hack
         widgets.entry().grab_focus_without_selecting();
 
@@ -91,6 +57,8 @@ impl App {
         if self.config.show_results_immediately {
             let _ = self.tx.try_send(anyrun_provider_ipc::Request::Query {
                 text: String::new(),
+                phase: QueryPhase::Settling,
+                plugins: Vec::new(),
             });
         }
     }
@@ -105,9 +73,13 @@ impl App {
         self.invocation = invocation;
         self.post_run_action = PostRunAction::None;
         widgets.entry().set_text("");
-        widgets.scroll().set_min_content_height(0);
-        widgets.scroll().set_max_content_height(0);
-        widgets.scroll().set_visible(false);
+        widgets.entry().set_placeholder_text(Some("Search"));
+        widgets.results_count().set_label("0 results");
+        widgets.footer().set_visible(true);
+
+        // Reset rapid typing state for new session
+        self.last_entry_change = None;
+        self.skip_animations = false;
 
         // Re-load CSS if in daemon mode to support hot-reload
         if self.is_daemon {
@@ -151,6 +123,8 @@ impl App {
         if self.is_daemon {
             let _ = self.tx.try_send(anyrun_provider_ipc::Request::Query {
                 text: String::new(),
+                phase: QueryPhase::Settling,
+                plugins: Vec::new(),
             });
         }
     }

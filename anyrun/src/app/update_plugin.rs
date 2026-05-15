@@ -1,12 +1,45 @@
 use super::{App, AppWidgets};
 use crate::plugin_box::{PluginBoxInput, PluginBoxOutput};
-use adw::prelude::*;
-use gtk::glib;
+use gtk::prelude::*;
 use gtk4 as gtk;
-use libadwaita as adw;
 use relm4::prelude::*;
 
 impl App {
+    pub(super) fn handle_pending_matches_flush(
+        &mut self,
+        widgets: &mut AppWidgets,
+        root: &gtk::Window,
+    ) {
+        if self.pending_matches.is_empty() {
+            return;
+        }
+
+        let updates = std::mem::take(&mut self.pending_matches);
+        self.batch_flushing_results = true;
+        for (i, plugin_box) in self.plugins.iter().enumerate() {
+            if let Some(matches) = updates.get(plugin_box.plugin_info.name.as_str()) {
+                self.plugins
+                    .send(i, PluginBoxInput::Matches(matches.clone()));
+            }
+        }
+        self.batch_flushing_results = false;
+
+        self.apply_results_layout(widgets, root, self.settled_once);
+        self.settled_once = true;
+        self.clear_pending_visual_state(widgets);
+
+        let matches = self.combined_matches();
+        if let Some((plugin, plugin_match)) = matches.first() {
+            plugin.matches.widget().select_row(Some(&plugin_match.row));
+        }
+
+        if self.config.max_entries.is_some() {
+            self.plugins.broadcast(PluginBoxInput::MaybeHide);
+        }
+
+        self.sync_shortcuts(widgets);
+    }
+
     pub(super) fn handle_plugin_output(
         &mut self,
         widgets: &mut AppWidgets,
@@ -16,126 +49,17 @@ impl App {
     ) {
         match output {
             PluginBoxOutput::MatchesLoaded => {
-                let is_empty = self.plugins.iter().all(|p| p.matches.is_empty());
-                let max_entries = self.config.max_entries;
-
-                if let Some(max_entries) = max_entries {
-                    let matches = self.combined_matches();
-                    for (_plugin, plugin_match) in matches.iter().skip(max_entries as usize) {
-                        plugin_match.row.set_visible(false);
-                    }
+                if self.batch_flushing_results {
+                    return;
                 }
-
-                if is_empty {
-                    if let Some(anim) = self.height_animation.take() {
-                        anim.pause();
-                    }
-
-                    let current_height = widgets.scroll().min_content_height();
-
-                    if current_height > 0 {
-                        let target = adw::CallbackAnimationTarget::new(glib::clone!(
-                            #[weak(rename_to = scroll)]
-                            widgets.scroll(),
-                            move |value| {
-                                let val = value as i32;
-                                let old_max = scroll.max_content_height();
-                                if val > old_max {
-                                    scroll.set_max_content_height(val);
-                                    scroll.set_min_content_height(val);
-                                } else {
-                                    scroll.set_min_content_height(val);
-                                    scroll.set_max_content_height(val);
-                                }
-                                if val <= 0 {
-                                    scroll.set_visible(false);
-                                }
-                            }
-                        ));
-
-                        let anim = adw::TimedAnimation::builder()
-                            .widget(widgets.scroll())
-                            .duration(200)
-                            .easing(adw::Easing::EaseOutQuart)
-                            .value_from(current_height as f64)
-                            .value_to(0.0)
-                            .target(&target)
-                            .build();
-
-                        anim.play();
-                        self.height_animation = Some(anim);
-                    } else {
-                        widgets.scroll().set_min_content_height(0);
-                        widgets.scroll().set_max_content_height(0);
-                        widgets.scroll().set_visible(false);
-                    }
-                } else {
-                    let mon_height = if let Some(surface) = root.surface() {
-                        let display = gtk::prelude::WidgetExt::display(root);
-                        display
-                            .monitor_at_surface(&surface)
-                            .map(|m| m.geometry().height() as u32)
-                            .unwrap_or(1080)
-                    } else {
-                        1080
-                    };
-
-                    let max_height = self.config.max_height.to_val(mon_height);
-
-                    // Calculate the natural height of the content
-                    // We use the plugins box which contains all plugin boxes
-                    let (_, natural_height) = widgets.plugins_box().preferred_size();
-                    let target_height = natural_height.height().min(max_height);
-
-                    widgets.scroll().set_visible(true);
-
-                    if let Some(anim) = self.height_animation.take() {
-                        anim.pause();
-                    }
-
-                    let current_height = widgets.scroll().min_content_height();
-
-                    // If the change is small, don't animate to avoid jitter
-                    if (current_height - target_height).abs() < 2 {
-                        widgets.scroll().set_min_content_height(target_height);
-                        widgets.scroll().set_max_content_height(target_height);
-                    } else {
-                        let target = adw::CallbackAnimationTarget::new(glib::clone!(
-                            #[weak(rename_to = scroll)]
-                            widgets.scroll(),
-                            move |value| {
-                                let val = value as i32;
-                                let old_max = scroll.max_content_height();
-                                if val > old_max {
-                                    scroll.set_max_content_height(val);
-                                    scroll.set_min_content_height(val);
-                                } else {
-                                    scroll.set_min_content_height(val);
-                                    scroll.set_max_content_height(val);
-                                }
-                            }
-                        ));
-
-                        let anim = adw::TimedAnimation::builder()
-                            .widget(widgets.scroll())
-                            .duration(200)
-                            .easing(adw::Easing::EaseOutQuart)
-                            .value_from(current_height as f64)
-                            .value_to(target_height as f64)
-                            .target(&target)
-                            .build();
-
-                        anim.play();
-                        self.height_animation = Some(anim);
-                    }
-                }
+                self.apply_results_layout(widgets, root, self.settled_once);
 
                 let matches = self.combined_matches();
                 if let Some((plugin, plugin_match)) = matches.first() {
                     plugin.matches.widget().select_row(Some(&plugin_match.row));
                 }
 
-                if max_entries.is_some() {
+                if self.config.max_entries.is_some() {
                     self.plugins.broadcast(PluginBoxInput::MaybeHide);
                 }
 
@@ -163,5 +87,44 @@ impl App {
                 }
             }
         }
+    }
+
+    fn apply_results_layout(
+        &mut self,
+        widgets: &mut AppWidgets,
+        root: &gtk::Window,
+        _allow_animation: bool,
+    ) {
+        let max_entries = self.config.max_entries;
+
+        if let Some(max_entries) = max_entries {
+            let matches = self.combined_matches();
+            for (_plugin, plugin_match) in matches.iter().skip(max_entries as usize) {
+                plugin_match.row.set_visible(false);
+            }
+        }
+
+        // if is_empty {
+        //     widgets.scroll().set_min_content_height(0);
+        //     widgets.scroll().set_max_content_height(0);
+        //     widgets.scroll().set_visible(false);
+        //     return;
+        // }
+
+        let mon_height = if let Some(surface) = root.surface() {
+            let display = gtk::prelude::WidgetExt::display(root);
+            display
+                .monitor_at_surface(&surface)
+                .map(|m| m.geometry().height() as u32)
+                .unwrap_or(1080)
+        } else {
+            1080
+        };
+
+        let target_height = self.config.height.to_val(mon_height);
+
+        widgets.scroll().set_min_content_height(target_height);
+        widgets.scroll().set_max_content_height(target_height);
+        widgets.scroll().set_visible(true);
     }
 }

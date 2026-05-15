@@ -1,8 +1,10 @@
 use super::{App, AppInit, AppWidgets, DaemonContext, SendInvocation};
+use crate::config::{PrefixRoute, TypingVisual};
 use crate::plugin_box::{PluginBox, PluginBoxInput, PluginMatch};
 use gtk::prelude::*;
 use gtk4 as gtk;
 use relm4::{ComponentBuilder, ComponentController};
+use std::collections::HashSet;
 
 impl App {
     pub fn launch(
@@ -90,6 +92,21 @@ impl App {
     }
 
     pub(super) fn sync_shortcuts(&self, widgets: &AppWidgets) {
+        let visible_count = self
+            .combined_matches()
+            .into_iter()
+            .filter(|(_, m)| m.row.get_visible())
+            .count();
+        widgets
+            .results_count()
+            .set_label(&format!("{visible_count} results"));
+        widgets.footer().set_visible(true);
+
+        // Skip shortcut calculation during rapid typing for better performance
+        if self.skip_animations {
+            return;
+        }
+
         let mut count = 0;
         let adj = widgets.scroll().vadjustment();
         let scroll_top = adj.value();
@@ -128,5 +145,60 @@ impl App {
             self.plugins
                 .send(i, PluginBoxInput::UpdateShortcuts(shortcuts));
         }
+    }
+
+    pub(super) fn route_plugins(&self, input: &str) -> Vec<String> {
+        if let Some(route) = self.match_prefix_route(input) {
+            return route.plugins.clone();
+        }
+
+        if input.trim().is_empty() {
+            return Vec::new();
+        }
+
+        if self.config.search_ux.bare_text_fast_lane.is_empty() {
+            return self
+                .plugins
+                .iter()
+                .map(|plugin| plugin.plugin_info.name.to_string())
+                .collect();
+        }
+
+        self.config.search_ux.bare_text_fast_lane.clone()
+    }
+
+    pub(super) fn settling_plugins(&self) -> Vec<String> {
+        let fast_lane: HashSet<_> = self.settling_plugins_sent.iter().cloned().collect();
+
+        self.plugins
+            .iter()
+            .map(|plugin| plugin.plugin_info.name.to_string())
+            .filter(|name| !fast_lane.contains(name))
+            .collect()
+    }
+
+    pub(super) fn set_pending_visual_state(&self, widgets: &AppWidgets) {
+        match self.config.search_ux.typing_visual {
+            TypingVisual::DimPrevious => widgets.scroll().add_css_class("search-pending"),
+            TypingVisual::KeepPrevious => widgets.scroll().remove_css_class("search-pending"),
+            TypingVisual::Clear => {
+                widgets.scroll().remove_css_class("search-pending");
+                self.plugins
+                    .broadcast(PluginBoxInput::Matches(Vec::new().into()));
+            }
+        }
+    }
+
+    pub(super) fn clear_pending_visual_state(&self, widgets: &AppWidgets) {
+        widgets.scroll().remove_css_class("search-pending");
+    }
+
+    fn match_prefix_route(&self, input: &str) -> Option<&PrefixRoute> {
+        self.config
+            .search_ux
+            .prefix_routes
+            .iter()
+            .filter(|route| !route.prefix.is_empty() && input.starts_with(&route.prefix))
+            .max_by_key(|route| route.prefix.len())
     }
 }
