@@ -4,6 +4,7 @@ pub mod icon;
 pub mod log;
 pub mod mazzy_matcher;
 pub mod terminal;
+pub mod window;
 
 pub fn focus_to_class(class: &str) {
     let output = std::process::Command::new("kdotool")
