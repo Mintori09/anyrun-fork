@@ -1,182 +1,181 @@
 /* ── Palette ───────────────────────────────────────────── */
 @define-color accent      #5599d2;
-@define-color bg-color    rgba(28, 28, 30, 0.95);
+@define-color bg-color    rgba(28, 28, 30, 0.70);
 @define-color fg-color    rgba(255, 255, 255, 0.92);
 @define-color fg-muted    rgba(255, 255, 255, 0.55);
-@define-color border-clr  rgba(255, 255, 255, 0.10);
+@define-color border-clr  rgba(255, 255, 255, 0.08);
 @define-color item-hover  rgba(255, 255, 255, 0.06);
-@define-color item-sel    rgba(85, 153, 210, 0.18);
+@define-color item-sel    rgba(85, 153, 210, 0.20);
+
+/* ── Global font ───────────────────────────────────────── */
+* {
+  font-family:
+    "SF Pro",
+    -apple-system,
+    "Helvetica Neue",
+    system-ui,
+    sans-serif;
+}
 
 /* ── Window ─────────────────────────────────────────────── */
 window {
-    background: transparent;
+  background: transparent;
 }
 
 /* ── Main container ─────────────────────────────────────── */
 box.main {
-    margin: 0;
-    padding: 0;
-    border-radius: 14px;
-    border: 0.5px solid @border-clr;
-    background-color: @bg-color;
-    box-shadow:
-        0 32px 64px rgba(0, 0, 0, 0.55),
-        0 8px 24px rgba(0, 0, 0, 0.35),
-        inset 0 0.5px 0 rgba(255, 255, 255, 0.08);
+  margin: 0;
+  padding: 0;
+  border-radius: 18px;
+  border: 0.5px solid @border-clr;
+  background-color: @bg-color;
+  box-shadow:
+    0 32px 64px rgba(0, 0, 0, 0.5),
+    0 8px 24px rgba(0, 0, 0, 0.3),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
 }
 
 /* ── Search entry ───────────────────────────────────────── */
 text {
-    min-height: 52px;
-    padding: 0 18px;
-    font-size: 18px;
-    font-weight: 400;
-    letter-spacing: -0.01em;
-    color: @fg-color;
-    caret-color: @accent;
-    border-bottom: 0.5px solid @border-clr;
+  min-height: 60px;
+  padding: 0 22px;
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: @fg-color;
+  caret-color: @accent;
 }
 
 /* ── Results container ──────────────────────────────────── */
 .matches {
-    background: transparent;
-    padding: 6px 0 8px;
-    transition: opacity 100ms ease;
+  background: transparent;
+  padding: 6px 0 8px;
+}
+
+.matches.matches-entered {
+  animation: macos-appear 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* ── Search pending dim ─────────────────────────────────── */
 .search-pending {
-    opacity: 0.65;
-    transition: opacity 100ms ease;
-}
-
-/* ── Plugin group ───────────────────────────────────────── */
-box.plugin {
-    padding: 0;
-    margin: 0;
-}
-
-box.plugin:not(:first-child) {
-    border-top: 0.5px solid @border-clr;
-    margin-top: 4px;
-    padding-top: 2px;
-}
-
-/* Plugin header row */
-box.plugin > box.info {
-    padding: 7px 18px 3px;
-    min-width: 0;
-}
-
-image.plugin.info {
-    min-width: 14px;
-    min-height: 14px;
-    opacity: 0.45;
-    -gtk-icon-size: 14px;
-}
-
-label.plugin.info {
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: @fg-muted;
-    padding-left: 6px;
-}
-
-/* ── Plugin list ────────────────────────────────────────── */
-list.plugin {
-    background: transparent;
+  opacity: 0.65;
+  transition: opacity 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* ── Individual match row ───────────────────────────────── */
 box.match {
-    padding: 6px 18px;
-    border-radius: 0;
-    background: transparent;
-    transition: background 80ms ease;
+  padding: 8px 16px;
+  border-radius: 0;
+  background: transparent;
+  transition: background 80ms ease;
 }
 
 row.match {
-    background: transparent;
-    padding: 0;
-    border-radius: 0;
-    transition: background 80ms ease;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  transition: background 80ms ease;
 }
 
 row.match:hover {
-    background-color: @item-hover;
+  background-color: @item-hover;
 }
 
-/* Selected state — left accent bar via border-left */
 row.match:selected,
 row.match:focus {
-    background-color: @item-sel;
-    border-left: 3px solid @accent;
-    animation: slide-in 80ms ease;
+  background-color: @item-sel;
+  border-left: none;
+  border-radius: 8px;
+  margin: 2px 8px;
+  animation: macos-select 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-@keyframes slide-in {
-    from {
-        opacity: 0;
-        transform: translateX(-3px);
-    }
-    to {
-        opacity: 1;
-        transform: translateX(0);
-    }
+@keyframes macos-select {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes macos-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* ── Match icon ─────────────────────────────────────────── */
 image.match {
-    min-width: 32px;
-    min-height: 32px;
-    -gtk-icon-size: 32px;
-    border-radius: 7px;
-    margin-right: 12px;
+  min-width: 28px;
+  min-height: 28px;
+  -gtk-icon-size: 28px;
+  border-radius: 6px;
+  margin-right: 14px;
 }
 
 /* ── Match text ─────────────────────────────────────────── */
 label.match {
-    font-size: 14px;
-    font-weight: 400;
-    color: @fg-color;
-    letter-spacing: -0.005em;
+  font-size: 14px;
+  font-weight: 400;
+  color: @fg-color;
+  letter-spacing: -0.005em;
 }
 
 row.match:selected label.match,
 row.match:focus label.match {
-    color: #ffffff;
+  color: #ffffff;
 }
 
 row.match:selected label.match.description,
 row.match:focus label.match.description {
-    color: @fg-muted;
+  color: @fg-muted;
 }
 
 label.match.description {
-    font-size: 12px;
-    font-weight: 400;
-    color: @fg-muted;
-    margin-top: 1px;
+  font-size: 12px;
+  font-weight: 400;
+  color: @fg-muted;
+  margin-top: 1px;
 }
 
-@define-color meta-color rgba(255, 255, 255, 0.46);
+/* ── Type label (right badge) ────────────────────────────── */
+label.match.type-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.4);
+  background-color: rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 2px 8px;
+  margin-left: 6px;
+}
+
+/* ── Footer ──────────────────────────────────────────────── */
+@define-color meta-color rgba(255, 255, 255, 0.40);
 box.footer {
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    padding: 8px 16px 10px;
-    margin-top: 4px;
+  border-top: 0.5px solid rgba(255, 255, 255, 0.05);
+  padding: 6px 16px 8px;
+  margin-top: 2px;
 }
 
 label.footer {
-    font-size: 11px;
-    color: @meta-color;
+  font-size: 11px;
+  font-weight: 400;
+  color: @meta-color;
 }
 
 label.footer.count {
-    color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.65);
 }
 
 label.footer.hints {
-    color: rgba(255, 255, 255, 0.58);
+  color: rgba(255, 255, 255, 0.5);
 }
