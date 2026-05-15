@@ -44,10 +44,13 @@ impl App {
                 let current_value = adj.value();
                 let page_size = adj.page_size();
 
-                if y < 0.0 {
-                    adj.set_value(current_value + y);
-                } else if y + row_height > page_size {
-                    adj.set_value(current_value + (y + row_height - page_size));
+                let viewport_top = current_value;
+                let viewport_bottom = current_value + page_size;
+
+                if y < viewport_top {
+                    adj.set_value(y);
+                } else if y + row_height > viewport_bottom {
+                    adj.set_value(y + row_height - page_size);
                 }
             }
         }
@@ -100,7 +103,7 @@ impl App {
         }
 
         if input.trim().is_empty() {
-            return Vec::new();
+            return self.non_prefix_plugins();
         }
 
         if self.config.search_ux.bare_text_fast_lane.is_empty() {
@@ -112,11 +115,19 @@ impl App {
 
     pub(super) fn settling_plugins(&self) -> Vec<String> {
         let fast_lane: HashSet<_> = self.settling_plugins_sent.iter().cloned().collect();
+        let prefixed: HashSet<String> = self
+            .config
+            .search_ux
+            .prefix_routes
+            .iter()
+            .flat_map(|route| route.plugins.iter().cloned())
+            .collect();
 
         self.plugin_names
             .iter()
             .cloned()
             .filter(|name| !fast_lane.contains(name))
+            .filter(|name| !self.current_input.trim().is_empty() || !prefixed.contains(name))
             .collect()
     }
 
@@ -142,5 +153,45 @@ impl App {
             .iter()
             .filter(|route| !route.prefix.is_empty() && input.starts_with(&route.prefix))
             .max_by_key(|route| route.prefix.len())
+    }
+
+    pub(super) fn partial_prefix_plugins(&self) -> Option<HashSet<String>> {
+        let matched: HashSet<String> = self
+            .config
+            .search_ux
+            .prefix_routes
+            .iter()
+            .filter(|route| {
+                !route.prefix.is_empty()
+                    && (self.current_input.starts_with(&route.prefix)
+                        || route.prefix.starts_with(&self.current_input))
+            })
+            .flat_map(|route| route.plugins.iter().cloned())
+            .collect();
+
+        if matched.is_empty() {
+            None
+        } else {
+            Some(matched)
+        }
+    }
+
+    pub(super) fn non_prefix_plugins(&self) -> Vec<String> {
+        let prefixed: HashSet<String> = self
+            .config
+            .search_ux
+            .prefix_routes
+            .iter()
+            .flat_map(|route| route.plugins.iter().cloned())
+            .collect();
+        let candidates = if self.config.search_ux.bare_text_fast_lane.is_empty() {
+            self.plugin_names.clone()
+        } else {
+            self.config.search_ux.bare_text_fast_lane.clone()
+        };
+        candidates
+            .into_iter()
+            .filter(|n| !prefixed.contains(n))
+            .collect()
     }
 }
