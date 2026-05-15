@@ -13,7 +13,12 @@ impl App {
             return;
         }
 
-        let plugin_names: Vec<String> = self.pending_matches.keys().cloned().collect();
+        let plugin_names: Vec<String> = self
+            .plugin_names
+            .iter()
+            .filter(|name| self.pending_matches.contains_key(*name))
+            .cloned()
+            .collect();
 
         struct PluginEntry {
             name: String,
@@ -30,24 +35,35 @@ impl App {
             })
             .collect();
 
-        let total: usize = entries.iter().map(|e| e.matches.len()).sum();
+        // Group by plugin: prefix-matched first, then the rest
+        let interleaved: Vec<(anyrun_interface::Match, String)> = {
+            let mut result = Vec::new();
 
-        // Round-robin interleave
-        let mut interleaved: Vec<(anyrun_interface::Match, String)> = Vec::with_capacity(total);
-        let mut idx = 0;
-        loop {
-            let mut added = false;
-            for entry in &entries {
-                if idx < entry.matches.len() {
-                    interleaved.push((entry.matches[idx].clone(), entry.name.clone()));
-                    added = true;
+            if let Some(prefix_set) = self.partial_prefix_plugins() {
+                for entry in &entries {
+                    if prefix_set.contains(&entry.name) {
+                        for m in &entry.matches {
+                            result.push((m.clone(), entry.name.clone()));
+                        }
+                    }
+                }
+                for entry in &entries {
+                    if !prefix_set.contains(&entry.name) {
+                        for m in &entry.matches {
+                            result.push((m.clone(), entry.name.clone()));
+                        }
+                    }
+                }
+            } else {
+                for entry in &entries {
+                    for m in &entry.matches {
+                        result.push((m.clone(), entry.name.clone()));
+                    }
                 }
             }
-            if !added {
-                break;
-            }
-            idx += 1;
-        }
+
+            result
+        };
 
         // Populate the single flat list
         {
@@ -72,11 +88,14 @@ impl App {
         self.apply_results_layout(widgets, root);
         self.clear_pending_visual_state(widgets);
 
+        if !self.matches_entered {
+            self.matches_entered = true;
+            widgets.matches_list().add_css_class("matches-entered");
+        }
+
         self.selected_index = 0;
         widgets.scroll().vadjustment().set_value(0.0);
-        if let Some(plugin_match) = self.matches.iter().next() {
-            widgets.matches_list().select_row(Some(&plugin_match.row));
-        }
+        self.sync_ui_selection(widgets);
 
         self.sync_shortcuts(widgets);
     }

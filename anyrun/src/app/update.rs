@@ -290,6 +290,9 @@ impl App {
             AppMsg::SyncShortcuts => {
                 self.sync_shortcuts(widgets);
             }
+            AppMsg::RowSelected(index) => {
+                self.selected_index = index;
+            }
             AppMsg::Activate(invocation) => {
                 self.handle_activate(widgets, invocation, sender, root);
             }

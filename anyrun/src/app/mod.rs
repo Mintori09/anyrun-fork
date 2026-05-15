@@ -93,15 +93,15 @@ impl Component for App {
                       sender.input(AppMsg::EntryChanged(entry.text().into()));
                   },
 
-                    add_controller = gtk::EventControllerKey {
-                        connect_key_pressed[sender] => move |_, key, _, modifier| {
-                            sender.input(AppMsg::KeyPressed { key, modifier});
-                            match key {
-                                gtk::gdk::Key::Tab => glib::Propagation::Stop,
-                                _ => glib::Propagation::Proceed,
+                        add_controller = gtk::EventControllerKey {
+                            connect_key_pressed[sender] => move |_, key, _, modifier| {
+                                sender.input(AppMsg::KeyPressed { key, modifier});
+                                match key {
+                                    gtk::gdk::Key::Tab | gtk::gdk::Key::Up | gtk::gdk::Key::Down => glib::Propagation::Stop,
+                                    _ => glib::Propagation::Proceed,
+                                }
                             }
                         }
-                    }
                 },
                 #[name = "_scroll"]
                 gtk::ScrolledWindow {
@@ -123,8 +123,10 @@ impl Component for App {
                         set_hexpand: true,
                         set_can_focus: false,
 
-                        connect_row_selected => move |_list, _row| {
-                            // track selected index on mouse click
+                        connect_row_selected[sender] => move |_list, row| {
+                            if let Some(row) = row {
+                                sender.input(AppMsg::RowSelected(row.index() as usize));
+                            }
                         }
                     }
                 },
