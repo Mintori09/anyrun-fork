@@ -45,15 +45,14 @@ impl App {
                         let adj = widgets.scroll().vadjustment();
                         let scroll_top = adj.value();
 
-                        let matches = self.combined_matches();
-                        let eligible_matches: Vec<_> = matches
+                        let eligible_matches: Vec<_> = self.matches
                             .iter()
                             .enumerate()
-                            .filter(|(_, (_, m))| {
+                            .filter(|(_, m)| {
                                 if !m.row.get_visible() {
                                     return false;
                                 }
-                                if let Some(bounds) = m.row.compute_bounds(widgets.plugins_box()) {
+                                if let Some(bounds) = m.row.compute_bounds(widgets.matches_list()) {
                                     let y = bounds.y() as f64;
                                     y + (bounds.height() as f64) > scroll_top
                                 } else {
@@ -111,11 +110,10 @@ impl App {
                     }
                     Action::Down | Action::Up => {
                         let global_idx = {
-                            let matches = self.combined_matches();
-                            let visible_matches: Vec<_> = matches
+                            let visible_matches: Vec<_> = self.matches
                                 .iter()
                                 .enumerate()
-                                .filter(|(_, (_, m))| m.row.get_visible())
+                                .filter(|(_, m)| m.row.get_visible())
                                 .collect();
 
                             if visible_matches.is_empty() {
@@ -145,17 +143,12 @@ impl App {
                         };
 
                         self.selected_index = global_idx;
-
-                        let matches = self.combined_matches();
-                        self.selected_plugin_index = self.sync_ui_selection(widgets, &matches);
+                        self.sync_ui_selection(widgets);
                     }
                     Action::Select => {
-                        let matches = self.combined_matches();
-                        if let Some((plugin, plugin_match)) = matches.get(self.selected_index) {
-                            let info = plugin.plugin_info.clone();
+                        if let Some(plugin_match) = self.matches.get(self.selected_index) {
+                            let info = plugin_match.plugin_info.clone();
                             let content = plugin_match.content.clone();
-
-                            drop(matches);
 
                             let _ = self.tx.try_send(ipc::Request::Handle {
                                 plugin: info,
@@ -199,7 +192,6 @@ impl App {
                         self.pending_flush_scheduled = false;
                         self.batch_flushing_results = false;
                         self.selected_index = 0;
-                        self.selected_plugin_index = None;
 
                         // 4. Reload plugins with new config
                         let _ = self.tx.try_send(ipc::Request::ReloadPlugins);
@@ -230,9 +222,7 @@ impl App {
             AppMsg::EntryChanged(text) => {
                 self.selected_index = 0;
                 widgets.scroll().vadjustment().set_value(0.0);
-                for plugin in self.plugins.iter() {
-                    plugin.matches.widget().unselect_all();
-                }
+                widgets.matches_list().unselect_all();
                 self.current_input = text.clone();
                 self.search_epoch = self.search_epoch.wrapping_add(1);
                 self.settle_animation_epoch = None;
@@ -296,9 +286,6 @@ impl App {
                         }
                     });
                 }
-            }
-            AppMsg::PluginOutput(output) => {
-                self.handle_plugin_output(widgets, output, sender, root);
             }
             AppMsg::SyncShortcuts => {
                 self.sync_shortcuts(widgets);

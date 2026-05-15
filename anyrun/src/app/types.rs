@@ -1,6 +1,6 @@
 use crate::{
     config::{Action, Config},
-    plugin_box::PluginBox,
+    plugin_box::PluginMatch,
     Args,
 };
 use gtk::{gdk, gio};
@@ -15,12 +15,13 @@ use tokio::sync::mpsc;
 pub struct App {
     pub(super) config: Arc<Config>,
     pub(super) invocation: Option<SendInvocation>,
-    pub(super) plugins: FactoryVecDeque<PluginBox>,
+    pub(super) matches: FactoryVecDeque<PluginMatch>,
+    pub(super) plugin_names: Vec<String>,
+    pub(super) plugin_info_map: HashMap<String, anyrun_interface::PluginInfo>,
     pub(super) post_run_action: PostRunAction,
     pub(super) tx: mpsc::Sender<anyrun_provider_ipc::Request>,
     pub(super) css_provider: gtk::CssProvider,
     pub(super) selected_index: usize,
-    pub(super) selected_plugin_index: Option<usize>,
     pub(super) config_dir: Option<String>,
     pub(super) is_daemon: bool,
     pub(super) search_cancellable: Option<gio::Cancellable>,
@@ -66,7 +67,6 @@ pub enum AppMsg {
     },
     Action(Action),
     EntryChanged(String),
-    PluginOutput(crate::plugin_box::PluginBoxOutput),
     Activate(Option<SendInvocation>),
     SyncShortcuts,
     ReloadPlugins,

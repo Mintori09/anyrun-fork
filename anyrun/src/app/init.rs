@@ -12,7 +12,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
-use super::{App, AppInit, AppMsg, DaemonContext, PostRunAction, SendInvocation, DEFAULT_CSS};
+use super::{App, AppInit, DaemonContext, PostRunAction, SendInvocation, DEFAULT_CSS};
 use crate::{config::Config, provider};
 
 impl App {
@@ -29,7 +29,7 @@ impl App {
         Arc<Config>,
         Option<String>,
         gtk::CssProvider,
-        gtk::Box,
+        gtk::ListBox,
     ) {
         let (config, config_dir, css_provider) = if let Some(ctx) = daemon_context.as_ref() {
             gtk::style_context_add_provider_for_display(
@@ -106,11 +106,14 @@ impl App {
             (Arc::new(config), config_dir, css_provider)
         };
 
-        let plugins_widget = gtk::Box::builder().build();
+        let matches_list = gtk::ListBox::builder()
+            .css_classes(["matches"])
+            .hexpand(true)
+            .build();
 
-        let plugins_factory = FactoryVecDeque::<crate::plugin_box::PluginBox>::builder()
-            .launch(plugins_widget.clone())
-            .forward(sender.input_sender(), AppMsg::PluginOutput);
+        let matches_factory = FactoryVecDeque::<crate::plugin_box::PluginMatch>::builder()
+            .launch(matches_list.clone())
+            .detach();
 
         let (tx, rx) = mpsc::channel(64);
 
@@ -141,13 +144,14 @@ impl App {
         let model = App {
             invocation,
             config: config.clone(),
-            plugins: plugins_factory,
+            matches: matches_factory,
+            plugin_names: Vec::new(),
+            plugin_info_map: std::collections::HashMap::new(),
             post_run_action: PostRunAction::None,
             tx,
             css_provider: css_provider.clone(),
             config_dir: config_dir.clone(),
             selected_index: 0,
-            selected_plugin_index: None,
             is_daemon: daemon_context.is_some(),
             search_cancellable: None,
             last_css_load: Some(std::time::SystemTime::now()),
@@ -168,6 +172,6 @@ impl App {
             let _ = model.tx.try_send(ipc::Request::Reset);
         }
 
-        (model, config, config_dir, css_provider, plugins_widget)
+        (model, config, config_dir, css_provider, matches_list)
     }
 }

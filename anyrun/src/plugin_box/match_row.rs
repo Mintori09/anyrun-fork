@@ -1,13 +1,14 @@
-use std::{path::PathBuf, sync::Arc};
+use crate::config::Config;
 use abi_stable::std_types::ROption;
-use anyrun_interface::Match;
+use anyrun_interface::{Match, PluginInfo};
 use gtk::{pango, prelude::*};
 use gtk4 as gtk;
 use relm4::prelude::*;
-use crate::config::Config;
+use std::{path::PathBuf, sync::Arc};
 
 pub struct PluginMatch {
     pub content: Match,
+    pub plugin_info: PluginInfo,
     pub row: gtk::ListBoxRow,
     pub(super) config: Arc<Config>,
     pub(super) type_label: String,
@@ -21,7 +22,7 @@ pub enum PluginMatchInput {
 
 #[relm4::factory(pub)]
 impl FactoryComponent for PluginMatch {
-    type Init = (Match, Arc<Config>, String);
+    type Init = (Match, Arc<Config>, String, PluginInfo);
     type Input = PluginMatchInput;
     type Output = ();
     type CommandOutput = ();
@@ -118,7 +119,7 @@ impl FactoryComponent for PluginMatch {
     }
 
     fn init_model(
-        (content, config, type_label): Self::Init,
+        (content, config, type_label, plugin_info): Self::Init,
         _index: &Self::Index,
         _sender: FactorySender<Self>,
     ) -> Self {
@@ -129,6 +130,7 @@ impl FactoryComponent for PluginMatch {
             content,
             config,
             type_label,
+            plugin_info,
             _shortcut: None,
         }
     }

@@ -13,7 +13,9 @@ anyrun-provider-ipc = { path = "../anyrun-provider/anyrun-provider-ipc" }
 chrono              = "0.4.42"
 
 clap             = { features = [ "derive" ], version = "4.2.7" }
-gtk4             = { features = [ "v4_12" ], version = "0.10.2" }
+gdk4-wayland = { version = "0.10" }
+gtk4 = { features = [ "v4_12" ], version = "0.10.2" }
+libloading = "0.8"
 gtk4-layer-shell = "0.7.1"
 libadwaita       = { features = [ "v1_6" ], version = "0.8.1" }
 relm4            = { branch = "service", git = "https://github.com/anyrun-org/Relm4" }

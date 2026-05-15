@@ -1,5 +1,5 @@
 use super::{App, AppMsg, AppWidgets, PostRunAction};
-use crate::{config::Action, plugin_box::PluginBoxInput};
+use crate::config::Action;
 use anyrun_interface::HandleResult;
 use anyrun_provider_ipc as ipc;
 use anyrun_provider_ipc::QueryPhase;
@@ -19,32 +19,30 @@ impl App {
     ) {
         match message {
             ipc::Response::Ready { info } => {
-                let mut guard = self.plugins.guard();
-                guard.clear();
+                self.plugin_names.clear();
+                self.plugin_info_map.clear();
                 for info in info {
-                    guard.push_back((info, self.config.clone()));
+                    self.plugin_names.push(info.name.to_string());
+                    self.plugin_info_map.insert(info.name.to_string(), info);
                 }
             }
             ipc::Response::Matches { plugin, matches } => {
                 self.pending_matches
                     .insert(plugin.name.to_string(), matches);
 
-                let flush_delay = self.config.search_ux.flush_delay_ms;
-                if flush_delay == 0 {
-                    self.pending_flush_scheduled = false;
-                    self.handle_pending_matches_flush(widgets, root);
-                } else if !self.pending_flush_scheduled {
+                if !self.pending_flush_scheduled {
                     self.pending_flush_scheduled = true;
                     let epoch = self.search_epoch;
                     let sender = sender.clone();
+                    let delay = self.config.search_ux.flush_delay_ms;
 
                     glib::MainContext::default().spawn_local(async move {
-                        glib::timeout_future(std::time::Duration::from_millis(flush_delay)).await;
+                        glib::timeout_future(std::time::Duration::from_millis(delay)).await;
                         sender.input(AppMsg::FlushPendingMatches(epoch));
                     });
                 }
             }
-            ipc::Response::Handled { plugin, result } => match result {
+            ipc::Response::Handled { plugin: _, result } => match result {
                 HandleResult::Close => sender.input(AppMsg::Action(Action::Close)),
                 HandleResult::Refresh(exclusive) => {
                     let _ = self.tx.try_send(ipc::Request::Query {
@@ -53,13 +51,8 @@ impl App {
                         plugins: Vec::new(),
                     });
                     if exclusive {
-                        for (i, plugin_box) in self.plugins.iter().enumerate() {
-                            if plugin_box.plugin_info != plugin {
-                                self.plugins.send(i, PluginBoxInput::Enable(false));
-                            }
-                        }
-                    } else {
-                        self.plugins.broadcast(PluginBoxInput::Enable(true));
+                        // With a flat list, clear matches when exclusive refresh is requested
+                        self.matches.guard().clear();
                     }
                 }
                 HandleResult::Copy(rvec) => {
