@@ -166,6 +166,7 @@ impl App {
             pending_settle_epoch: None,
             settling_plugins_sent: std::collections::HashSet::new(),
             batch_flushing_results: false,
+            matches_entered: false,
         };
 
         if model.is_daemon {

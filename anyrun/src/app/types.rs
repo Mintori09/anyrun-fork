@@ -40,6 +40,7 @@ pub struct App {
     pub(super) pending_settle_epoch: Option<u64>,
     pub(super) settling_plugins_sent: HashSet<String>,
     pub(super) batch_flushing_results: bool,
+    pub(super) matches_entered: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +71,7 @@ pub enum AppMsg {
     Activate(Option<SendInvocation>),
     SyncShortcuts,
     ReloadPlugins,
+    RowSelected(usize),
     FlushPendingMatches(u64),
     TriggerSettledQuery(u64, String),
 }
