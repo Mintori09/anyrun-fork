@@ -1,3 +1,4 @@
+mod init;
 mod methods;
 mod types;
 mod update;
@@ -7,23 +8,14 @@ mod update_show;
 
 pub use types::*;
 
-use crate::{
-    config::{self, Config},
-    provider,
-};
+use crate::config;
 use adw::prelude::*;
-use anyrun_provider_ipc as ipc;
 use gtk::glib;
 use gtk4 as gtk;
 use gtk4_layer_shell::LayerShell;
 use libadwaita as adw;
 use relm4::prelude::*;
-use std::env;
-use std::fs;
-use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
-use tokio::sync::mpsc;
 
 #[relm4::component(pub)]
 impl Component for App {
@@ -78,6 +70,7 @@ impl Component for App {
                 set_halign: gtk::Align::Center,
                 set_vexpand: false,
                 set_hexpand: true,
+                set_size_request: (800, -1),
                 set_css_classes: &["main"],
 
                 #[name = "_entry"]
@@ -112,12 +105,37 @@ impl Component for App {
                         });
                     },
 
-                    #[local]
-                    plugins -> gtk::Box {
+                    #[local_ref]
+                    plugins_widget -> gtk::Box {
                         set_orientation: gtk::Orientation::Vertical,
                         set_can_focus: false,
                         set_css_classes: &["matches"],
                         set_hexpand: true,
+                    }
+                },
+
+                #[name = "_footer"]
+                gtk::Box {
+                    set_css_classes: &["footer"],
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_halign: gtk::Align::Fill,
+                    set_hexpand: true,
+                    set_visible: false,
+
+                    #[name = "_results_count"]
+                    gtk::Label {
+                        set_css_classes: &["footer", "count"],
+                        set_halign: gtk::Align::Start,
+                        set_hexpand: true,
+                        set_xalign: 0.0,
+                    },
+
+                    #[name = "_footer_hints"]
+                    gtk::Label {
+                        set_css_classes: &["footer", "hints"],
+                        set_halign: gtk::Align::End,
+                        set_xalign: 1.0,
+                        set_label: "↑↓ select · Enter open · Esc close",
                     }
                 }
             }
@@ -125,137 +143,14 @@ impl Component for App {
     }
 
     fn init(
-        (app_init, invocation, daemon_context): Self::Init,
+        init: Self::Init,
         root: Self::Root,
         sender: relm4::ComponentSender<Self>,
     ) -> relm4::ComponentParts<Self> {
-        let (config, config_dir, css_provider) = if let Some(ctx) = daemon_context.as_ref() {
-            gtk::style_context_add_provider_for_display(
-                &root.upcast_ref::<gtk::Widget>().display(),
-                &ctx.css_provider,
-                gtk::STYLE_PROVIDER_PRIORITY_USER,
-            );
-            (
-                ctx.config.clone(),
-                ctx.config_dir.clone(),
-                ctx.css_provider.clone(),
-            )
-        } else {
-            let user_dir = env::var("XDG_CONFIG_HOME")
-                .map(|c| format!("{c}/anyrun"))
-                .or_else(|_| env::var("HOME").map(|h| format!("{h}/.config/anyrun")))
-                .unwrap();
-            let config_dir = app_init
-                .args
-                .config_dir
-                .clone()
-                .map(Some)
-                .unwrap_or_else(|| {
-                    if PathBuf::from(&user_dir).exists() {
-                        Some(user_dir.clone())
-                    } else {
-                        ipc::CONFIG_DIRS
-                            .iter()
-                            .map(|path| path.to_string())
-                            .find(|path| PathBuf::from(path).exists())
-                    }
-                });
-
-            let css_provider = gtk::CssProvider::new();
-
-            let mut config = if let Some(config_dir) = &config_dir {
-                match fs::read_to_string(format!("{config_dir}/style.css")) {
-                    Ok(style) => {
-                        css_provider.load_from_string(&style);
-                    }
-                    Err(why) => {
-                        eprintln!("[anyrun] Failed to load CSS: {why}");
-                        css_provider.load_from_string(DEFAULT_CSS);
-                    }
-                }
-                match fs::read(format!("{config_dir}/config.ron")) {
-                    Ok(content) => ron::de::from_bytes(&content).unwrap_or_else(|why| {
-                        eprintln!(
-                            "[anyrun] Failed to parse config file, using default values: {why}"
-                        );
-                        Config::default()
-                    }),
-                    Err(why) => {
-                        eprintln!(
-                            "[anyrun] Failed to read config file, using default values: {why}"
-                        );
-                        Config::default()
-                    }
-                }
-            } else {
-                eprintln!("[anyrun] No config found in any searched paths");
-                css_provider.load_from_string(DEFAULT_CSS);
-                Config::default()
-            };
-
-            gtk::style_context_add_provider_for_display(
-                &root.upcast_ref::<gtk::Widget>().display(),
-                &css_provider,
-                gtk::STYLE_PROVIDER_PRIORITY_USER,
-            );
-
-            config.merge_opt(app_init.args.config.clone());
-
-            (Arc::new(config), config_dir, css_provider)
-        };
-
-        let plugins = gtk::Box::builder().build();
-
-        let plugins_factory = FactoryVecDeque::<crate::plugin_box::PluginBox>::builder()
-            .launch(plugins.clone())
-            .forward(sender.input_sender(), AppMsg::PluginOutput);
-
-        let (tx, rx) = mpsc::channel(64);
-
-        let socket_path = daemon_context.as_ref().map(|ctx| ctx.socket_path.clone());
-
-        sender.spawn_command(glib::clone!(
-            #[strong]
-            config,
-            #[strong]
-            config_dir,
-            #[strong(rename_to = stdin)]
-            app_init.stdin,
-            #[strong(rename_to = env)]
-            app_init.env,
-            move |sender| {
-                if let Some(socket_path) = socket_path {
-                    if let Err(why) = provider::worker_connect(socket_path, rx, sender) {
-                        eprintln!("[anyrun] IPC worker failed to connect: {why}");
-                    }
-                } else if let Err(why) =
-                    provider::worker_spawn(config, config_dir, rx, sender, stdin, env)
-                {
-                    eprintln!("[anyrun] IPC worker returned an error: {why}");
-                }
-            }
-        ));
+        let (model, config, _config_dir, _css_provider, plugins_widget) = Self::init_model(init, &root, sender.clone());
 
         let widgets = view_output!();
-        let model = Self {
-            invocation,
-            config,
-            plugins: plugins_factory,
-            post_run_action: PostRunAction::None,
-            tx,
-            css_provider,
-            config_dir,
-            selected_index: 0,
-            selected_plugin_index: None,
-            is_daemon: daemon_context.is_some(),
-            search_cancellable: None,
-            height_animation: None,
-            last_css_load: Some(std::time::SystemTime::now()),
-        };
-
-        if model.is_daemon {
-            let _ = model.tx.try_send(ipc::Request::Reset);
-        }
+        widgets.entry().set_placeholder_text(Some("Search"));
 
         ComponentParts { model, widgets }
     }
@@ -294,6 +189,12 @@ impl AppWidgets {
         &self._main
     }
     pub(super) fn plugins_box(&self) -> &gtk::Box {
-        &self.plugins
+        &self.plugins_widget
+    }
+    pub(super) fn footer(&self) -> &gtk::Box {
+        &self._footer
+    }
+    pub(super) fn results_count(&self) -> &gtk::Label {
+        &self._results_count
     }
 }

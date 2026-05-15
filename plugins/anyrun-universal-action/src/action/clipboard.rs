@@ -1,10 +1,24 @@
 use anyrun_helper::icon::{SystemIcon, home_dir};
 use arboard::Clipboard;
+use once_cell::sync::Lazy;
+use regex::Regex;
 use std::env;
 use std::path::PathBuf;
 
 use crate::action::model::InputCategory;
 use crate::helper::detect_and_save::call_magika;
+
+static COLOR_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$").unwrap());
+static EMAIL_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap()
+});
+static IPV4_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^(\d{1,3}\.){3}\d{1,3}(:\d+)?$").unwrap());
+static IPV6_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$").unwrap());
+static URL_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^(https?|ftp|file)://").unwrap());
 
 impl InputCategory {
     pub fn classify_clipboard() -> (InputCategory, String) {
@@ -32,38 +46,29 @@ impl InputCategory {
         }
 
         // 1. Check Color Hex (#RGB, #RGBA, #RRGGBB, #RRGGBBAA)
-        let color_re =
-            regex::Regex::new(r"^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$").unwrap();
-        if color_re.is_match(trimmed) {
+        if COLOR_RE.is_match(trimmed) {
             return InputCategory::Design {
                 kind: "hex_color".into(),
             };
         }
 
         // 2. Check Email
-        if trimmed.contains('@') {
-            let email_re =
-                regex::Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap();
-            if email_re.is_match(trimmed) {
-                return InputCategory::System {
-                    kind: "email".into(),
-                };
-            }
+        if trimmed.contains('@') && EMAIL_RE.is_match(trimmed) {
+            return InputCategory::System {
+                kind: "email".into(),
+            };
         }
 
         // 3. Check IP Address (IPv4 / IPv6)
-        let ipv4_re = regex::Regex::new(r"^(\d{1,3}\.){3}\d{1,3}(:\d+)?$").unwrap();
-        if ipv4_re.is_match(trimmed) {
+        if IPV4_RE.is_match(trimmed) {
             return InputCategory::System { kind: "ip".into() };
         }
-        let ipv6_re = regex::Regex::new(r"^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$").unwrap();
-        if ipv6_re.is_match(trimmed) {
+        if IPV6_RE.is_match(trimmed) {
             return InputCategory::System { kind: "ip".into() };
         }
 
         // 4. Check URL
-        let url_re = regex::Regex::new(r"^(https?|ftp|file)://").unwrap();
-        if url_re.is_match(trimmed) || trimmed.starts_with("www.") {
+        if URL_RE.is_match(trimmed) || trimmed.starts_with("www.") {
             return InputCategory::System { kind: "url".into() };
         }
 
@@ -87,8 +92,9 @@ impl InputCategory {
             return InputCategory::Code { lang: "php".into() };
         }
 
-        // 7. Check via Magika
-        if let Some((group, label, score)) = call_magika(trimmed)
+        // 7. Check via Magika (skip for short text — score never > 0.30 anyway)
+        if trimmed.len() >= 20
+            && let Some((group, label, score)) = call_magika(trimmed)
             && score > 0.30
         {
             match group.as_str() {

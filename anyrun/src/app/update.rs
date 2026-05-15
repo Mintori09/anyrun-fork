@@ -1,6 +1,7 @@
 use super::{App, AppMsg, AppWidgets, PostRunAction, SendInvocation};
 use crate::config::{Action, Keybind};
 use anyrun_provider_ipc as ipc;
+use anyrun_provider_ipc::QueryPhase;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use gtk4 as gtk;
@@ -163,22 +164,69 @@ impl App {
             }
             AppMsg::EntryChanged(text) => {
                 self.selected_index = 0;
+                self.current_input = text.clone();
+                self.search_epoch = self.search_epoch.wrapping_add(1);
+                self.settle_animation_epoch = None;
+                self.settled_once = false;
+                self.pending_matches.clear();
+                self.pending_flush_scheduled = false;
+                self.pending_settle_epoch = Some(self.search_epoch);
+                self.settling_plugins_sent.clear();
+
+                // Detect rapid typing (keystrokes within 100ms of each other)
+                let now = std::time::Instant::now();
+                let is_rapid = self
+                    .last_entry_change
+                    .map(|t| now.duration_since(t) < std::time::Duration::from_millis(100))
+                    .unwrap_or(false);
+
+                // Track rapid typing for animation skipping
+                if is_rapid {
+                    self.skip_animations = true;
+                } else {
+                    self.skip_animations = false;
+                }
+                self.last_entry_change = Some(now);
+
+                // Keep previous results during rapid typing to avoid strobing
+                if !is_rapid {
+                    self.set_pending_visual_state(widgets);
+                }
+
+                // Cancel any pending query to prevent backlog during rapid typing
                 if let Some(cancellable) = self.search_cancellable.take() {
                     cancellable.cancel();
                 }
 
                 let cancellable = gio::Cancellable::new();
                 self.search_cancellable = Some(cancellable.clone());
-
                 let tx = self.tx.clone();
+                let sender_clone = sender.clone();
+                let epoch = self.search_epoch;
+                let settle_delay = self.config.search_ux.settle_delay_ms;
+                let typing_plugins = self.route_plugins(&text);
+                self.settling_plugins_sent
+                    .extend(typing_plugins.iter().cloned());
 
-                glib::MainContext::default().spawn_local(async move {
-                    glib::timeout_future(std::time::Duration::from_millis(150)).await;
-
-                    if !cancellable.is_cancelled() {
-                        let _ = tx.try_send(ipc::Request::Query { text });
-                    }
+                let _ = tx.try_send(ipc::Request::Query {
+                    text: text.clone(),
+                    phase: QueryPhase::Typing,
+                    plugins: typing_plugins,
                 });
+
+                if settle_delay == 0 {
+                    if !cancellable.is_cancelled() {
+                        sender_clone.input(AppMsg::TriggerSettledQuery(epoch, text));
+                    }
+                } else {
+                    glib::MainContext::default().spawn_local(async move {
+                        glib::timeout_future(std::time::Duration::from_millis(settle_delay)).await;
+
+                        if !cancellable.is_cancelled() {
+                            sender_clone.input(AppMsg::TriggerSettledQuery(epoch, text));
+                        }
+                    });
+                }
             }
             AppMsg::PluginOutput(output) => {
                 self.handle_plugin_output(widgets, output, sender, root);
@@ -191,6 +239,29 @@ impl App {
             }
             AppMsg::ReloadPlugins => {
                 let _ = self.tx.try_send(ipc::Request::ReloadPlugins);
+            }
+            AppMsg::FlushPendingMatches(epoch) => {
+                if epoch != self.search_epoch {
+                    return;
+                }
+
+                self.pending_flush_scheduled = false;
+                self.handle_pending_matches_flush(widgets, root);
+            }
+            AppMsg::TriggerSettledQuery(epoch, text) => {
+                if epoch != self.search_epoch {
+                    return;
+                }
+
+                let plugins = self.settling_plugins();
+                if plugins.is_empty() {
+                    return;
+                }
+                let _ = self.tx.try_send(ipc::Request::Query {
+                    text,
+                    phase: QueryPhase::Settling,
+                    plugins,
+                });
             }
         }
     }

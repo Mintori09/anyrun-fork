@@ -2,6 +2,7 @@ use super::{App, AppMsg, AppWidgets, PostRunAction};
 use crate::{config::Action, plugin_box::PluginBoxInput};
 use anyrun_interface::HandleResult;
 use anyrun_provider_ipc as ipc;
+use anyrun_provider_ipc::QueryPhase;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
 use gtk4 as gtk;
@@ -25,26 +26,31 @@ impl App {
                 }
             }
             ipc::Response::Matches { plugin, matches } => {
-                let i = self
-                    .plugins
-                    .iter()
-                    .enumerate()
-                    .find_map(|(i, plugin_box)| {
-                        if plugin_box.plugin_info == plugin {
-                            Some(i)
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap();
+                self.pending_matches
+                    .insert(plugin.name.to_string(), matches);
 
-                self.plugins.send(i, PluginBoxInput::Matches(matches));
+                let flush_delay = self.config.search_ux.flush_delay_ms;
+                if flush_delay == 0 {
+                    self.pending_flush_scheduled = false;
+                    self.handle_pending_matches_flush(widgets, root);
+                } else if !self.pending_flush_scheduled {
+                    self.pending_flush_scheduled = true;
+                    let epoch = self.search_epoch;
+                    let sender = sender.clone();
+
+                    glib::MainContext::default().spawn_local(async move {
+                        glib::timeout_future(std::time::Duration::from_millis(flush_delay)).await;
+                        sender.input(AppMsg::FlushPendingMatches(epoch));
+                    });
+                }
             }
             ipc::Response::Handled { plugin, result } => match result {
                 HandleResult::Close => sender.input(AppMsg::Action(Action::Close)),
                 HandleResult::Refresh(exclusive) => {
                     let _ = self.tx.try_send(ipc::Request::Query {
                         text: widgets.entry().text().into(),
+                        phase: QueryPhase::Settling,
+                        plugins: Vec::new(),
                     });
                     if exclusive {
                         for (i, plugin_box) in self.plugins.iter().enumerate() {

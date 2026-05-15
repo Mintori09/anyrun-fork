@@ -33,12 +33,16 @@ pub fn remove_accents(input: &str) -> String {
         .collect()
 }
 
+thread_local! {
+    static MATCHER: fuzzy_matcher::skim::SkimMatcherV2 =
+        fuzzy_matcher::skim::SkimMatcherV2::default().smart_case();
+}
+
 pub fn fuzzy_match(haystack: &str, needle: &str) -> Option<i64> {
     use fuzzy_matcher::FuzzyMatcher;
-    let matcher = fuzzy_matcher::skim::SkimMatcherV2::default().smart_case();
 
     // Try normal match first
-    if let Some(score) = matcher.fuzzy_match(haystack, needle) {
+    if let Some(score) = MATCHER.with(|m| m.fuzzy_match(haystack, needle)) {
         return Some(score);
     }
 
@@ -46,5 +50,5 @@ pub fn fuzzy_match(haystack: &str, needle: &str) -> Option<i64> {
     let haystack_no_accents = remove_accents(haystack);
     let needle_no_accents = remove_accents(needle);
 
-    matcher.fuzzy_match(&haystack_no_accents, &needle_no_accents)
+    MATCHER.with(|m| m.fuzzy_match(&haystack_no_accents, &needle_no_accents))
 }

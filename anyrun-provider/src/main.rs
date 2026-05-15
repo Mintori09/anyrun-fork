@@ -2,7 +2,6 @@ use anyrun_interface::{HandleResult, Match, PluginInfo, PluginRef, abi_stable};
 use anyrun_provider_ipc::{CONFIG_DIRS, PLUGIN_PATHS, Request, Response, Socket};
 use chrono::{DateTime, Utc};
 use clap::{Parser, Subcommand};
-use futures::stream::{FuturesUnordered, StreamExt};
 use notify::RecommendedWatcher;
 use notify_debouncer_mini::{Debouncer, new_debouncer};
 use serde::{Deserialize, Serialize};
@@ -12,14 +11,27 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::Mutex;
-use tokio::sync::broadcast;
-use tokio::task::{AbortHandle, JoinHandle};
+use tokio::sync::{Mutex, broadcast, mpsc, watch};
+use tokio::task::JoinHandle;
 
 // Định nghĩa alias để code gọn gàng hơn
-type PluginQueryResult = (abi_stable::std_types::RVec<Match>, usize);
+type PluginQueryResult = (usize, u64, abi_stable::std_types::RVec<Match>);
+
+#[derive(Clone)]
+struct QueuedQuery {
+    query_id: u64,
+    text: Arc<str>,
+}
+
+struct PluginSearchWorker {
+    query_tx: watch::Sender<Option<QueuedQuery>>,
+    handle: JoinHandle<()>,
+}
+
+type SearchFn = Arc<dyn Fn(Arc<str>) -> abi_stable::std_types::RVec<Match> + Send + Sync + 'static>;
 
 #[derive(Serialize, Deserialize, Default)]
 struct FrecencyData {
@@ -98,6 +110,79 @@ struct State {
     plugin_map: HashMap<String, usize>,
     config_dir: Arc<str>,
     frecency: Arc<Mutex<FrecencyData>>,
+}
+
+fn spawn_query_worker(
+    plugin_idx: usize,
+    mut query_rx: watch::Receiver<Option<QueuedQuery>>,
+    result_tx: mpsc::UnboundedSender<PluginQueryResult>,
+    search_fn: SearchFn,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut last_query_id = 0u64;
+
+        loop {
+            let Some(query) = query_rx.borrow().clone() else {
+                if query_rx.changed().await.is_err() {
+                    break;
+                }
+                continue;
+            };
+
+            if query.query_id == last_query_id {
+                if query_rx.changed().await.is_err() {
+                    break;
+                }
+                continue;
+            }
+
+            last_query_id = query.query_id;
+            let query_text = query.text.clone();
+            let query_id = query.query_id;
+            let search_fn = Arc::clone(&search_fn);
+
+            match tokio::task::spawn_blocking(move || search_fn(query_text)).await {
+                Ok(matches) => {
+                    let _ = result_tx.send((plugin_idx, query_id, matches));
+                }
+                Err(err) => {
+                    eprintln!(
+                        "[provider] Search worker failed for plugin index {plugin_idx}: {err}"
+                    );
+                }
+            }
+
+            if query_rx.changed().await.is_err() {
+                break;
+            }
+        }
+    })
+}
+
+fn start_search_workers(
+    state: &State,
+    result_tx: mpsc::UnboundedSender<PluginQueryResult>,
+) -> Vec<PluginSearchWorker> {
+    state
+        .plugins
+        .iter()
+        .enumerate()
+        .map(|(idx, plugin_state)| {
+            let (query_tx, query_rx) = watch::channel(None);
+            let plugin_fn = plugin_state.plugin.get_matches();
+            let search_fn: SearchFn =
+                Arc::new(move |query_text: Arc<str>| plugin_fn(query_text.as_ref().into()));
+            let handle = spawn_query_worker(idx, query_rx, result_tx.clone(), search_fn);
+            PluginSearchWorker { query_tx, handle }
+        })
+        .collect()
+}
+
+fn stop_search_workers(workers: &mut Vec<PluginSearchWorker>) {
+    for worker in workers.drain(..) {
+        worker.handle.abort();
+        drop(worker.query_tx);
+    }
 }
 
 #[tokio::main]
@@ -192,40 +277,50 @@ async fn worker(
     let plugin_infos: Vec<PluginInfo> = state.plugins.iter().map(|p| p.info.clone()).collect();
     socket.send(&Response::Ready { info: plugin_infos }).await?;
 
-    let mut pending_results: FuturesUnordered<JoinHandle<PluginQueryResult>> =
-        FuturesUnordered::new();
-    let mut abort_handles: Vec<AbortHandle> = Vec::new();
+    let (result_tx, mut result_rx) = mpsc::unbounded_channel::<PluginQueryResult>();
+    let mut search_workers = start_search_workers(state, result_tx);
+
+    // Query ID for ignoring stale results
+    static QUERY_COUNTER: AtomicU64 = AtomicU64::new(0);
+    let mut current_query_id = 0u64;
 
     loop {
         tokio::select! {
-            Some(join_result) = pending_results.next() => {
-                if let Ok((mut matches, idx)) = join_result
-                    && let Some(p_state) = state.plugins.get(idx) {
-                        // Apply frecency re-sorting while preserving match quality
-                        let mut indexed_matches: Vec<_> = matches.into_iter().enumerate().collect();
-                        {
-                            let frecency = state.frecency.lock().await;
-                            let plugin_name = p_state.info.name.as_str();
+            Some((idx, query_id, mut matches)) = result_rx.recv() => {
+                if query_id != current_query_id {
+                    continue;
+                }
 
-                            indexed_matches.sort_by(|(idx_a, a), (idx_b, b)| {
-                                let f_score_a = frecency.get_score(plugin_name, a.title.as_str(), 7.0);
-                                let f_score_b = frecency.get_score(plugin_name, b.title.as_str(), 7.0);
+                if let Some(p_state) = state.plugins.get(idx) {
+                    // Apply frecency re-sorting while preserving match quality
+                    // Cache scores per entry to avoid recomputation
+                    let indexed_matches: Vec<_> = matches.into_iter().enumerate().collect();
+                    {
+                        let frecency = state.frecency.lock().await;
+                        let plugin_name = p_state.info.name.as_str();
 
-                                // Balance original rank and frecency
-                                // Higher score is better
-                                let score_a = (1.0 / (1.0 + *idx_a as f64)) + f_score_a * 0.1;
-                                let score_b = (1.0 / (1.0 + *idx_b as f64)) + f_score_b * 0.1;
+                        // Precompute scores for each match to avoid repeated get_score calls during sorting
+                        let mut scored_matches: Vec<(usize, Match, f64)> = indexed_matches
+                            .iter()
+                            .map(|(orig_idx, m)| {
+                                let f_score = frecency.get_score(plugin_name, m.title.as_str(), 7.0);
+                                let score = (1.0 / (1.0 + *orig_idx as f64)) + f_score * 0.1;
+                                (*orig_idx, m.clone(), score)
+                            })
+                            .collect();
 
-                                score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
-                            });
-                        }
-                        matches = indexed_matches.into_iter().map(|(_, m)| m).collect();
+                        scored_matches.sort_by(|(_, _, score_a), (_, _, score_b)| {
+                            score_b.partial_cmp(score_a).unwrap_or(std::cmp::Ordering::Equal)
+                        });
 
-                        socket.send(&Response::Matches {
-                            plugin: p_state.info.clone(),
-                            matches,
-                        }).await?;
+                        matches = scored_matches.into_iter().map(|(_, m, _)| m).collect();
                     }
+
+                    socket.send(&Response::Matches {
+                        plugin: p_state.info.clone(),
+                        matches,
+                    }).await?;
+                }
             }
 
             req_result = socket.recv() => {
@@ -236,31 +331,34 @@ async fn worker(
                 };
 
                 match request {
-                Request::Query { text } => {
-                    for handle in abort_handles.drain(..) {
-                        handle.abort();
-                    }
-                    pending_results.clear();
-
-                    for p in &mut state.plugins {
-                        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            p.plugin.init()(state.config_dir.as_ref().into());
-                        }));
-                    }
+                Request::Query { text, plugins, .. } => {
+                    // Increment query ID for this new query
+                    current_query_id = QUERY_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
 
                     let query: Arc<str> = text.into();
-                        for (idx, p_state) in state.plugins.iter().enumerate() {
-                            let plugin_fn = p_state.plugin.get_matches();
-                            let q = Arc::clone(&query);
+                    let query_id = current_query_id;
+                    let selected_plugins: Vec<_> = state
+                        .plugins
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, p_state)| {
+                            plugins.is_empty()
+                                || plugins
+                                    .iter()
+                                    .any(|name| name == p_state.info.name.as_str())
+                        })
+                        .map(|(idx, _)| idx)
+                        .collect();
 
-                            let handle = tokio::task::spawn_blocking(move || {
-                                (plugin_fn(q.as_ref().into()), idx)
-                            });
-
-                            abort_handles.push(handle.abort_handle());
-                            pending_results.push(handle);
+                    for idx in selected_plugins {
+                        if let Some(worker) = search_workers.get(idx) {
+                            let _ = worker.query_tx.send(Some(QueuedQuery {
+                                query_id,
+                                text: Arc::clone(&query),
+                            }));
                         }
                     }
+                }
                     Request::Handle { plugin, selection } => {
                         if let Some(&idx) = state.plugin_map.get(plugin.name.as_str()) {
                             let mut frecency = state.frecency.lock().await;
@@ -281,20 +379,24 @@ async fn worker(
                         }
                     }
                     Request::Reset => {
-                        pending_results.clear();
+                        stop_search_workers(&mut search_workers);
                         for p in &mut state.plugins {
                             p.plugin.init()(state.config_dir.as_ref().into());
                         }
+                        let (new_result_tx, new_result_rx) = mpsc::unbounded_channel::<PluginQueryResult>();
+                        search_workers = start_search_workers(state, new_result_tx);
+                        result_rx = new_result_rx;
                     }
                     Request::ReloadPlugins => {
-                        for handle in abort_handles.drain(..) {
-                            handle.abort();
-                        }
-                        pending_results.clear();
+                        stop_search_workers(&mut search_workers);
 
                         for p in &mut state.plugins {
                             p.plugin.init()(state.config_dir.as_ref().into());
                         }
+
+                        let (new_result_tx, new_result_rx) = mpsc::unbounded_channel::<PluginQueryResult>();
+                        search_workers = start_search_workers(state, new_result_tx);
+                        result_rx = new_result_rx;
 
                         let plugin_infos: Vec<PluginInfo> =
                             state.plugins.iter().map(|p| p.info.clone()).collect();
@@ -302,17 +404,26 @@ async fn worker(
                     }
                     Request::ReloadPlugin { name } => {
                         if let Some(&idx) = state.plugin_map.get(&name) {
-                            if let Some(p) = state.plugins.get_mut(idx) {
-                                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            stop_search_workers(&mut search_workers);
+                            let result = if let Some(p) = state.plugins.get_mut(idx) {
+                                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                                     p.plugin.init()(state.config_dir.as_ref().into());
-                                }));
-                                if result.is_err() {
-                                    eprintln!("[provider] Plugin re-init failed for: {}", name);
-                                } else {
-                                    let plugin_infos: Vec<PluginInfo> =
-                                        state.plugins.iter().map(|p| p.info.clone()).collect();
-                                    socket.send(&Response::Ready { info: plugin_infos }).await?;
-                                }
+                                }))
+                            } else {
+                                Ok(())
+                            };
+
+                            let (new_result_tx, new_result_rx) =
+                                mpsc::unbounded_channel::<PluginQueryResult>();
+                            search_workers = start_search_workers(state, new_result_tx);
+                            result_rx = new_result_rx;
+
+                            if result.is_err() {
+                                eprintln!("[provider] Plugin re-init failed for: {}", name);
+                            } else {
+                                let plugin_infos: Vec<PluginInfo> =
+                                    state.plugins.iter().map(|p| p.info.clone()).collect();
+                                socket.send(&Response::Ready { info: plugin_infos }).await?;
                             }
                         }
                     }
@@ -321,10 +432,9 @@ async fn worker(
             }
 
             _ = reload_rx.recv() => {
-                for handle in abort_handles.drain(..) {
-                    handle.abort();
-                }
-                pending_results.clear();
+                // If a query is in progress, delay reload slightly to avoid interrupting typing
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                stop_search_workers(&mut search_workers);
 
                 let mut failed = Vec::new();
                 for (_i, p) in state.plugins.iter_mut().enumerate() {
@@ -342,6 +452,9 @@ async fn worker(
 
                 let plugin_infos: Vec<PluginInfo> =
                     state.plugins.iter().map(|p| p.info.clone()).collect();
+                let (new_result_tx, new_result_rx) = mpsc::unbounded_channel::<PluginQueryResult>();
+                search_workers = start_search_workers(state, new_result_tx);
+                result_rx = new_result_rx;
                 socket.send(&Response::Ready { info: plugin_infos }).await?;
             }
         }
@@ -404,11 +517,7 @@ fn resolve_desktop_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-fn spawn_file_watcher(
-    reload_tx: broadcast::Sender<()>,
-    plugin_dirs: &[PathBuf],
-    config_dir: &str,
-) {
+fn spawn_file_watcher(reload_tx: broadcast::Sender<()>, plugin_dirs: &[PathBuf], config_dir: &str) {
     let desktop_dirs = resolve_desktop_dirs();
     let mut watch_paths: Vec<PathBuf> = desktop_dirs.into_iter().filter(|p| p.exists()).collect();
 
@@ -455,7 +564,7 @@ fn spawn_file_watcher(
                 }
             };
 
-            let is_config_change = events.iter().any(|event| {
+            let _is_config_change = events.iter().any(|event| {
                 event
                     .path
                     .to_str()
@@ -473,6 +582,33 @@ fn spawn_file_watcher(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicBool;
+    use std::time::Duration;
+    use tokio::time::timeout;
+
+    fn plugin_sample_library_path() -> Option<PathBuf> {
+        let current_exe = std::env::current_exe().ok()?;
+        let deps_dir = current_exe.parent()?;
+        let direct_candidate = deps_dir.join("libanyrun_plugin_template.so");
+        if direct_candidate.exists() {
+            return Some(direct_candidate);
+        }
+
+        std::fs::read_dir(deps_dir)
+            .ok()?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| {
+                        name.starts_with("libanyrun_plugin_template")
+                            && (name.ends_with(".so")
+                                || name.ends_with(".dylib")
+                                || name.ends_with(".dll"))
+                    })
+            })
+    }
 
     #[test]
     fn test_resolve_desktop_dirs_includes_user_applications() {
@@ -531,18 +667,18 @@ mod tests {
     #[test]
     fn test_plugin_init_panic_handling() {
         let count = std::sync::atomic::AtomicUsize::new(0);
-        
+
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }));
-        
+
         assert!(result.is_ok());
         assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             panic!("simulated init failure");
         }));
-        
+
         assert!(result.is_err());
     }
 
@@ -553,26 +689,19 @@ mod tests {
 
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let config_path = temp_dir.path().join("plugin-sample.ron");
-        
+
         let initial_config = r#"(prefix: "init:", max_entries: 5, show_results_immediately: true)"#;
         fs::write(&config_path, initial_config).expect("Failed to write initial config");
 
-        let plugin_path = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-            .unwrap_or_default()
-            .join("libanyrun_plugin_template.so");
-        
-        let plugin_path = if plugin_path.exists() {
-            plugin_path
-        } else {
-            std::path::PathBuf::from("target/debug/deps/libanyrun_plugin_template.so")
+        let Some(plugin_path) = plugin_sample_library_path() else {
+            return;
         };
 
-        let header = abi_stable::library::lib_header_from_path(&plugin_path)
-            .expect("Failed to load plugin");
-        
-        let plugin = header.init_root_module::<PluginRef>()
+        let header =
+            abi_stable::library::lib_header_from_path(&plugin_path).expect("Failed to load plugin");
+
+        let plugin = header
+            .init_root_module::<PluginRef>()
             .expect("Failed to init plugin module");
 
         plugin.init()(temp_dir.path().to_string_lossy().as_ref().into());
@@ -582,7 +711,8 @@ mod tests {
         let matches1 = plugin.get_matches()("init:hello".into());
         assert!(matches1.is_empty(), "Expected no matches with empty data");
 
-        let updated_config = r#"(prefix: "test:", max_entries: 10, show_results_immediately: false)"#;
+        let updated_config =
+            r#"(prefix: "test:", max_entries: 10, show_results_immediately: false)"#;
         fs::write(&config_path, updated_config).expect("Failed to write updated config");
 
         plugin.init()(temp_dir.path().to_string_lossy().as_ref().into());
@@ -590,9 +720,91 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(100));
 
         let matches_with_old_prefix = plugin.get_matches()("init:hello".into());
-        assert!(matches_with_old_prefix.is_empty(), "Old prefix should not match after config reload");
+        assert!(
+            matches_with_old_prefix.is_empty(),
+            "Old prefix should not match after config reload"
+        );
 
         let matches_with_new_prefix = plugin.get_matches()("test:hello".into());
-        assert!(matches_with_new_prefix.is_empty(), "Expected no matches with empty data");
+        assert!(
+            matches_with_new_prefix.is_empty(),
+            "Expected no matches with empty data"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_spawn_query_worker_only_processes_latest_pending_query() {
+        use abi_stable::std_types::{ROption, RString};
+        use std::sync::atomic::Ordering;
+        use tokio::sync::mpsc;
+
+        let (result_tx, mut result_rx) = mpsc::unbounded_channel::<PluginQueryResult>();
+        let (query_tx, query_rx) = watch::channel(None);
+        let first_query_started = Arc::new(AtomicBool::new(false));
+
+        let started_flag = first_query_started.clone();
+        let search_fn: SearchFn = Arc::new(move |query_text: Arc<str>| {
+            let text = query_text.as_ref().to_string();
+            if text == "a" {
+                started_flag.store(true, Ordering::SeqCst);
+                std::thread::sleep(Duration::from_millis(200));
+            }
+
+            vec![Match {
+                title: RString::from(text),
+                description: ROption::RNone,
+                use_pango: false,
+                icon: ROption::RNone,
+                id: ROption::RNone,
+            }]
+            .into()
+        });
+
+        let handle = spawn_query_worker(0, query_rx, result_tx, search_fn);
+
+        let _ = query_tx.send(Some(QueuedQuery {
+            query_id: 1,
+            text: Arc::from("a"),
+        }));
+
+        timeout(Duration::from_millis(200), async {
+            while !first_query_started.load(Ordering::SeqCst) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("first query should start");
+
+        let _ = query_tx.send(Some(QueuedQuery {
+            query_id: 2,
+            text: Arc::from("ab"),
+        }));
+        let _ = query_tx.send(Some(QueuedQuery {
+            query_id: 3,
+            text: Arc::from("abc"),
+        }));
+
+        let first = timeout(Duration::from_millis(500), result_rx.recv())
+            .await
+            .expect("first result should arrive")
+            .expect("worker should send first result");
+        assert_eq!(first.1, 1);
+        assert_eq!(first.2[0].title.as_str(), "a");
+
+        let second = timeout(Duration::from_millis(500), result_rx.recv())
+            .await
+            .expect("latest result should arrive")
+            .expect("worker should send latest result");
+        assert_eq!(second.1, 3);
+        assert_eq!(second.2[0].title.as_str(), "abc");
+
+        assert!(
+            timeout(Duration::from_millis(150), result_rx.recv())
+                .await
+                .is_err(),
+            "intermediate query should be coalesced"
+        );
+
+        handle.abort();
     }
 }
