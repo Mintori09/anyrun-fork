@@ -164,6 +164,13 @@ impl Config {
                 key: gdk::Key::p,
                 action: Action::Up,
             },
+            Keybind {
+                ctrl: true,
+                alt: false,
+                shift: false,
+                key: gdk::Key::r,
+                action: Action::ReloadConfig,
+            },
         ]
     }
 }

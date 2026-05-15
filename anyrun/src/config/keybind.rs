@@ -7,6 +7,7 @@ pub enum Action {
     Select,
     Up,
     Down,
+    ReloadConfig,
 }
 
 #[derive(Deserialize, Clone)]
