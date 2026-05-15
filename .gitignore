@@ -2,3 +2,6 @@
 /.direnv
 /docs
 /.worktrees
+PLAN.md
+demo*.png
+anyrun/Cargo.lock
