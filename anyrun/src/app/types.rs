@@ -41,6 +41,9 @@ pub struct App {
     pub(super) settling_plugins_sent: HashSet<String>,
     pub(super) batch_flushing_results: bool,
     pub(super) matches_entered: bool,
+    pub(super) last_scroll_top: f64,
+    pub(super) last_visible_count: usize,
+    pub(super) last_flush_hash: u64,
 }
 
 #[derive(Debug, Clone)]
