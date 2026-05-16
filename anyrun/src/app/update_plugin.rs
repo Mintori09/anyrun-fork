@@ -2,6 +2,7 @@ use super::{App, AppWidgets};
 use crate::plugin_box::plugin_type_label;
 use gtk::prelude::*;
 use gtk4 as gtk;
+use std::hash::{Hash, Hasher};
 
 impl App {
     pub(super) fn handle_pending_matches_flush(
@@ -13,10 +14,28 @@ impl App {
             return;
         }
 
+        // Compute hash of incoming results; skip flush if unchanged
+        use std::collections::hash_map::DefaultHasher;
+        let mut hasher = DefaultHasher::new();
+        for (name, ms) in &self.pending_matches {
+            name.hash(&mut hasher);
+            for m in ms.iter() {
+                m.title.hash(&mut hasher);
+            }
+        }
+        let hash = hasher.finish();
+        if hash == self.last_flush_hash {
+            self.pending_matches.clear();
+            return;
+        }
+        self.last_flush_hash = hash;
+
+        let mut pending = std::mem::take(&mut self.pending_matches);
+
         let plugin_names: Vec<String> = self
             .plugin_names
             .iter()
-            .filter(|name| self.pending_matches.contains_key(*name))
+            .filter(|name| pending.contains_key(*name))
             .cloned()
             .collect();
 
@@ -28,9 +47,9 @@ impl App {
         let entries: Vec<PluginEntry> = plugin_names
             .iter()
             .filter_map(|name| {
-                self.pending_matches.get(name).map(|ms| PluginEntry {
+                pending.remove(name).map(|ms| PluginEntry {
                     name: name.clone(),
-                    matches: ms.iter().cloned().collect(),
+                    matches: ms.into_iter().collect(),
                 })
             })
             .collect();

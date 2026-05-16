@@ -167,6 +167,9 @@ impl App {
             settling_plugins_sent: std::collections::HashSet::new(),
             batch_flushing_results: false,
             matches_entered: false,
+            last_scroll_top: 0.0,
+            last_visible_count: 0,
+            last_flush_hash: 1,
         };
 
         if model.is_daemon {

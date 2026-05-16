@@ -3,9 +3,12 @@ use std::io;
 use anyrun_interface::{HandleResult, Match, PluginInfo, abi_stable::std_types::RVec};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncReadExt, AsyncWriteExt, BufReader},
     net::UnixStream,
 };
+
+/// Maximum allowed frame size for incoming messages (64 MiB)
+const MAX_FRAME_SIZE: usize = 64 * 1024 * 1024;
 
 // Default search paths, maintain backwards compatibility
 pub const CONFIG_DIRS: &[&str] = &["/etc/xdg/anyrun", "/etc/anyrun"];
@@ -93,7 +96,6 @@ pub enum Error {
 
 pub struct Socket {
     pub inner: BufReader<UnixStream>,
-    recv_buf: String,
     send_buf: Vec<u8>,
 }
 
@@ -103,25 +105,33 @@ impl Socket {
 
         Self {
             inner,
-            recv_buf: String::new(),
             send_buf: Vec::with_capacity(4096),
         }
     }
 
     pub async fn send<T: Serialize>(&mut self, value: &T) -> io::Result<()> {
         self.send_buf.clear();
-        serde_json::to_writer(&mut self.send_buf, value).map_err(io::Error::other)?;
-        self.send_buf.push(b'\n');
+        bincode::serialize_into(&mut self.send_buf, value).map_err(io::Error::other)?;
+        let len = self.send_buf.len() as u32;
+        self.inner.get_mut().write_all(&len.to_le_bytes()).await?;
         self.inner.get_mut().write_all(&self.send_buf).await?;
         self.inner.get_mut().flush().await?;
         Ok(())
     }
 
     pub async fn recv<T: DeserializeOwned>(&mut self) -> io::Result<T> {
-        self.recv_buf.clear();
-        self.inner.read_line(&mut self.recv_buf).await?;
-
-        serde_json::from_str::<T>(&self.recv_buf).map_err(io::Error::other)
+        let mut len_buf = [0u8; 4];
+        self.inner.read_exact(&mut len_buf).await?;
+        let len = u32::from_le_bytes(len_buf) as usize;
+        if len > MAX_FRAME_SIZE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "frame too large",
+            ));
+        }
+        let mut buf = vec![0u8; len];
+        self.inner.read_exact(&mut buf).await?;
+        bincode::deserialize::<T>(&buf).map_err(io::Error::other)
     }
 }
 
@@ -132,8 +142,8 @@ mod tests {
     #[test]
     fn test_reload_plugins_request_serializes() {
         let req = Request::ReloadPlugins;
-        let json = serde_json::to_string(&req).unwrap();
-        let deserialized: Request = serde_json::from_str(&json).unwrap();
+        let bytes = bincode::serialize(&req).unwrap();
+        let deserialized: Request = bincode::deserialize(&bytes).unwrap();
         assert!(matches!(deserialized, Request::ReloadPlugins));
     }
 
@@ -150,8 +160,8 @@ mod tests {
             Request::ReloadPlugins,
         ];
         for req in requests {
-            let json = serde_json::to_string(&req).unwrap();
-            let deserialized: Request = serde_json::from_str(&json).unwrap();
+            let bytes = bincode::serialize(&req).unwrap();
+            let deserialized: Request = bincode::deserialize(&bytes).unwrap();
             assert_eq!(format!("{req:?}"), format!("{deserialized:?}"));
         }
     }

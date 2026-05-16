@@ -64,17 +64,26 @@ impl FrecencyData {
         self.usage.retain(|_, usages| !usages.is_empty());
     }
 
-    pub fn get_score(&self, plugin: &str, title: &str, half_life_days: f64) -> f64 {
+    pub fn batch_get_scores(
+        &self,
+        plugin: &str,
+        titles: &[&str],
+        half_life_days: f64,
+    ) -> Vec<f64> {
         let now = Utc::now();
-        let mut total_score = 0.0;
-        if let Some(usages) = self.usage.get(&(plugin.to_string(), title.to_string())) {
-            for &time in usages {
-                let duration = now.signed_duration_since(time);
-                let days = duration.num_seconds() as f64 / 86400.0;
-                total_score += 0.5f64.powf(days / half_life_days);
+        let mut results = Vec::with_capacity(titles.len());
+        for &title in titles {
+            let mut total_score = 0.0;
+            if let Some(usages) = self.usage.get(&(plugin.to_string(), title.to_string())) {
+                for &time in usages {
+                    let duration = now.signed_duration_since(time);
+                    let days = duration.num_seconds() as f64 / 86400.0;
+                    total_score += 0.5f64.powf(days / half_life_days);
+                }
             }
+            results.push(total_score);
         }
-        total_score
+        results
     }
 }
 
@@ -292,29 +301,29 @@ async fn worker(
                 }
 
                 if let Some(p_state) = state.plugins.get(idx) {
-                    // Apply frecency re-sorting while preserving match quality
-                    // Cache scores per entry to avoid recomputation
-                    let indexed_matches: Vec<_> = matches.into_iter().enumerate().collect();
-                    {
+                    let plugin_name = p_state.info.name.as_str();
+
+                    // Collect titles before acquiring lock
+                    let titles: Vec<&str> = matches.iter().map(|m| m.title.as_str()).collect();
+
+                    // Batch-get all scores in one lock acquisition
+                    let scores = {
                         let frecency = state.frecency.lock().await;
-                        let plugin_name = p_state.info.name.as_str();
+                        frecency.batch_get_scores(plugin_name, &titles, 7.0)
+                    };
 
-                        // Precompute scores for each match to avoid repeated get_score calls during sorting
-                        let mut scored_matches: Vec<(usize, Match, f64)> = indexed_matches
-                            .iter()
-                            .map(|(orig_idx, m)| {
-                                let f_score = frecency.get_score(plugin_name, m.title.as_str(), 7.0);
-                                let score = (1.0 / (1.0 + *orig_idx as f64)) + f_score * 0.1;
-                                (*orig_idx, m.clone(), score)
-                            })
-                            .collect();
-
-                        scored_matches.sort_by(|(_, _, score_a), (_, _, score_b)| {
-                            score_b.partial_cmp(score_a).unwrap_or(std::cmp::Ordering::Equal)
-                        });
-
-                        matches = scored_matches.into_iter().map(|(_, m, _)| m).collect();
+                    // Score and sort outside lock
+                    let mut scored: Vec<(Match, f64)> = Vec::with_capacity(matches.len());
+                    for (i, (m, f_score)) in matches.drain(..).zip(scores).enumerate() {
+                        let score = (1.0 / (1.0 + i as f64)) + f_score * 0.1;
+                        scored.push((m, score));
                     }
+
+                    scored.sort_by(|(_, a), (_, b)| {
+                        b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal)
+                    });
+
+                    matches = scored.into_iter().map(|(m, _)| m).collect();
 
                     socket.send(&Response::Matches {
                         plugin: p_state.info.clone(),

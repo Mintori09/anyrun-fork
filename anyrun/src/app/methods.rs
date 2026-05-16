@@ -68,10 +68,20 @@ impl App {
             return;
         }
 
-        let mut count = 0;
         let adj = widgets.scroll().vadjustment();
         let scroll_top = adj.value();
 
+        // Skip expensive compute_bounds if nothing changed
+        let scroll_changed = (scroll_top - self.last_scroll_top).abs() > 0.5
+            || self.last_visible_count != visible_count;
+        self.last_scroll_top = scroll_top;
+        self.last_visible_count = visible_count;
+
+        if !scroll_changed {
+            return;
+        }
+
+        let mut count = 0;
         for (i, m) in self.matches.iter().enumerate() {
             if !m.row.get_visible() {
                 self.matches.send(i, PluginMatchInput::SetShortcut(None));

@@ -225,6 +225,9 @@ impl App {
                 self.selected_index = 0;
                 widgets.scroll().vadjustment().set_value(0.0);
                 widgets.matches_list().unselect_all();
+                self.last_scroll_top = 0.0;
+                self.last_visible_count = 0;
+                self.last_flush_hash = 1;
                 self.current_input = text.clone();
                 self.search_epoch = self.search_epoch.wrapping_add(1);
                 self.settle_animation_epoch = None;
