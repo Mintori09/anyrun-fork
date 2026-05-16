@@ -25,12 +25,11 @@ impl App {
         }
         let hash = hasher.finish();
         if hash == self.last_flush_hash {
-            self.pending_matches.clear();
             return;
         }
         self.last_flush_hash = hash;
 
-        let mut pending = std::mem::take(&mut self.pending_matches);
+        let pending = &self.pending_matches;
 
         let plugin_names: Vec<String> = self
             .plugin_names
@@ -47,9 +46,9 @@ impl App {
         let entries: Vec<PluginEntry> = plugin_names
             .iter()
             .filter_map(|name| {
-                pending.remove(name).map(|ms| PluginEntry {
+                pending.get(name).map(|ms| PluginEntry {
                     name: name.clone(),
-                    matches: ms.into_iter().collect(),
+                    matches: ms.iter().cloned().collect(),
                 })
             })
             .collect();

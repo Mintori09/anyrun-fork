@@ -291,12 +291,12 @@ async fn worker(
 
     // Query ID for ignoring stale results
     static QUERY_COUNTER: AtomicU64 = AtomicU64::new(0);
-    let mut current_query_id = 0u64;
+    let mut plugin_query_ids = vec![0u64; state.plugins.len()];
 
     loop {
         tokio::select! {
             Some((idx, query_id, mut matches)) = result_rx.recv() => {
-                if query_id != current_query_id {
+                if query_id != *plugin_query_ids.get(idx).unwrap_or(&0) {
                     continue;
                 }
 
@@ -341,11 +341,9 @@ async fn worker(
 
                 match request {
                 Request::Query { text, plugins, .. } => {
-                    // Increment query ID for this new query
-                    current_query_id = QUERY_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
+                    let query_id = QUERY_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
 
                     let query: Arc<str> = text.into();
-                    let query_id = current_query_id;
                     let selected_plugins: Vec<_> = state
                         .plugins
                         .iter()
@@ -358,6 +356,12 @@ async fn worker(
                         })
                         .map(|(idx, _)| idx)
                         .collect();
+
+                    for idx in &selected_plugins {
+                        if let Some(id) = plugin_query_ids.get_mut(*idx) {
+                            *id = query_id;
+                        }
+                    }
 
                     for idx in selected_plugins {
                         if let Some(worker) = search_workers.get(idx) {
