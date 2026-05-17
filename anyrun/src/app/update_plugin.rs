@@ -94,12 +94,7 @@ impl App {
                         icon: String::new().into(),
                     }
                 });
-                guard.push_back((
-                    m,
-                    self.config.clone(),
-                    plugin_type_label(&name).to_string(),
-                    info,
-                ));
+                guard.push_back((m, self.config.clone(), plugin_type_label(&name), info));
             }
         }
 
