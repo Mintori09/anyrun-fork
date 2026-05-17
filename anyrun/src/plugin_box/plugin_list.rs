@@ -1,6 +1,6 @@
-pub fn plugin_type_label(plugin_name: &str) -> &'static str {
+pub fn plugin_type_label(plugin_name: &str) -> String {
     match plugin_name {
-        "Applications" => "App",
+        "Applications" => "Application",
         "KDE Settings" | "Bluetooth Control" => "Settings",
         "Shell Wrapper" | "Shell Wrapper Once" | "Calc" | "Universal Action" | "Sync Manager" => {
             "Action"
@@ -10,6 +10,7 @@ pub fn plugin_type_label(plugin_name: &str) -> &'static str {
         "KDE Klipper" => "Clipboard",
         "Translate" => "Translate",
         "Symbols" => "Symbol",
-        _ => "Result",
+        _ => plugin_name,
     }
+    .into()
 }
