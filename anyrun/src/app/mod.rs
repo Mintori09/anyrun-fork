@@ -103,10 +103,18 @@ impl Component for App {
 
                         add_controller = gtk::EventControllerKey {
                             connect_key_pressed[sender] => move |_, key, _, modifier| {
+                                if key == gtk::gdk::Key::Alt_L || key == gtk::gdk::Key::Alt_R {
+                                    sender.input(AppMsg::ShowShortcuts(true));
+                                }
                                 sender.input(AppMsg::KeyPressed { key, modifier});
                                 match key {
                                     gtk::gdk::Key::Tab | gtk::gdk::Key::Up | gtk::gdk::Key::Down => glib::Propagation::Stop,
                                     _ => glib::Propagation::Proceed,
+                                }
+                            },
+                            connect_key_released[sender] => move |_, key, _, _modifier| {
+                                if key == gtk::gdk::Key::Alt_L || key == gtk::gdk::Key::Alt_R {
+                                    sender.input(AppMsg::ShowShortcuts(false));
                                 }
                             }
                         }

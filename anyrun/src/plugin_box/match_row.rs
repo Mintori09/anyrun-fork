@@ -13,6 +13,7 @@ pub struct PluginMatch {
     pub(super) config: Arc<Config>,
     pub(super) type_label: String,
     pub(super) _shortcut: Option<usize>,
+    pub(super) badge_label: String,
 }
 
 #[derive(Debug, Clone)]
@@ -77,8 +78,8 @@ impl FactoryComponent for PluginMatch {
 
                 gtk::Label {
                     #[watch]
-                    set_label: &self.type_label,
-                    set_visible: !self.type_label.is_empty(),
+                    set_label: &self.badge_label,
+                    set_visible: !self.badge_label.is_empty(),
                     set_css_classes: &["match", "type-label"],
                     set_halign: gtk::Align::End,
                     set_valign: gtk::Align::Center,
@@ -129,9 +130,10 @@ impl FactoryComponent for PluginMatch {
             row,
             content,
             config,
-            type_label,
+            type_label: type_label.clone(),
             plugin_info,
             _shortcut: None,
+            badge_label: type_label,
         }
     }
 
@@ -139,6 +141,8 @@ impl FactoryComponent for PluginMatch {
         match message {
             PluginMatchInput::SetShortcut(shortcut) => {
                 self._shortcut = shortcut;
+                self.badge_label =
+                    shortcut.map_or_else(|| self.type_label.clone(), |n| n.to_string());
             }
         }
     }

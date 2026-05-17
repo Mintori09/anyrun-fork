@@ -38,7 +38,7 @@ test target="all":
 #     done
 
 run:
-    just build all
+    just build bin
     ./target/release/anyrun
 
 daemon:

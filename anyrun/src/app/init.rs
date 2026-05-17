@@ -170,6 +170,7 @@ impl App {
             last_scroll_top: 0.0,
             last_visible_count: 0,
             last_flush_hash: 1,
+            show_shortcuts: false,
         };
 
         if model.is_daemon {
