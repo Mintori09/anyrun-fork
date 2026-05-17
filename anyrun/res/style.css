@@ -158,6 +158,20 @@ label.match.type-label {
   margin-left: 6px;
 }
 
+/* ── Shortcut number badge (Alt held) ────────────────────── */
+label.match.shortcut {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: @accent;
+  background-color: rgba(85, 153, 210, 0.15);
+  border-radius: 6px;
+  padding: 2px 6px;
+  margin-left: 6px;
+  min-width: 16px;
+  text-align: center;
+}
+
 /* ── Footer ──────────────────────────────────────────────── */
 @define-color meta-color rgba(255, 255, 255, 0.40);
 box.footer {

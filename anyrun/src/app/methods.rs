@@ -64,7 +64,14 @@ impl App {
             .set_label(&format!("{visible_count} results"));
         widgets.footer().set_visible(true);
 
-        if self.skip_animations {
+        if !self.show_shortcuts {
+            for i in 0..self.matches.len() {
+                self.matches.send(i, PluginMatchInput::SetShortcut(None));
+            }
+            return;
+        }
+
+        if self.skip_animations && !self.show_shortcuts {
             return;
         }
 

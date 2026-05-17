@@ -1,5 +1,6 @@
 use super::{App, AppMsg, AppWidgets, PostRunAction, SendInvocation, DEFAULT_CSS};
 use crate::config::{Action, Config, Keybind};
+use crate::plugin_box::PluginMatchInput;
 use anyrun_provider_ipc as ipc;
 use anyrun_provider_ipc::QueryPhase;
 use gtk::prelude::*;
@@ -294,6 +295,17 @@ impl App {
             }
             AppMsg::SyncShortcuts => {
                 self.sync_shortcuts(widgets);
+            }
+            AppMsg::ShowShortcuts(show) => {
+                self.show_shortcuts = show;
+                if show {
+                    self.last_scroll_top = -f64::INFINITY;
+                    self.sync_shortcuts(widgets);
+                } else {
+                    for i in 0..self.matches.len() {
+                        self.matches.send(i, PluginMatchInput::SetShortcut(None));
+                    }
+                }
             }
             AppMsg::RowSelected(index) => {
                 self.selected_index = index;

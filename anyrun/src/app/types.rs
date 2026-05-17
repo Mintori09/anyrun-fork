@@ -44,6 +44,7 @@ pub struct App {
     pub(super) last_scroll_top: f64,
     pub(super) last_visible_count: usize,
     pub(super) last_flush_hash: u64,
+    pub(super) show_shortcuts: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -77,6 +78,7 @@ pub enum AppMsg {
     RowSelected(usize),
     FlushPendingMatches(u64),
     TriggerSettledQuery(u64, String),
+    ShowShortcuts(bool),
 }
 
 #[derive(Deserialize, Serialize, Clone)]
