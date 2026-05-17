@@ -1,47 +1,56 @@
-# anyrun-applications
+# Applications
 
-Plugin này cho phép bạn tìm kiếm và khởi chạy các ứng dụng từ các file desktop entry trên hệ thống của bạn.
+A desktop entry runner for [Anyrun](/../../) with fuzzy search, desktop actions, and system commands.
 
-## Tính năng
+## Features
 
-- Tìm kiếm mờ (fuzzy search) tên ứng dụng, mô tả và từ khóa.
-- Hỗ trợ các hành động desktop (Desktop Actions).
-- Tích hợp các lệnh hệ thống nhanh: Tắt máy, Khởi động lại, Khóa màn hình, v.v.
-- Hỗ trợ chạy ứng dụng trong terminal.
-- Cho phép xử lý lệnh thực thi thông qua script tùy chỉnh.
+- **Fuzzy Search**: Matches application name, description, and keywords with Vietnamese accent stripping.
+- **Desktop Actions**: Supports application-specific actions (e.g. "New Window" for browsers).
+- **System Actions**: Built-in shutdown, reboot, lock screen, suspend, and logout.
+- **Terminal Apps**: Automatically runs terminal applications in the configured terminal emulator.
+- **Pre-process Script**: Optionally transform exec commands via an external script.
 
-## Cách sử dụng
+## Usage
 
-Plugin này hoạt động mặc định mà không cần tiền tố (prefix). Chỉ cần nhập tên ứng dụng bạn muốn tìm.
+This plugin activates automatically without a prefix. Simply type the application name.
 
-## Phụ thuộc
+## Dependencies
 
-- `anyrun`
-- Các file `.desktop` chuẩn (thường ở `/usr/share/applications` và `~/.local/share/applications`)
+- Standard `.desktop` files (in `/usr/share/applications` and `~/.local/share/applications`).
+- A terminal emulator (one of: Alacritty, Foot, Kitty, WezTerm, Ghostty) — auto-detected.
 
-## Cấu hình
+## Configuration
 
-File cấu hình: `applications.ron`
+The configuration is defined in `applications.ron` in your Anyrun config directory.
 
 ```ron
 Config(
+  // Show desktop action entries (e.g. "New Window", "New Private Window")
   desktop_actions: true,
+
+  // Maximum entries to display
   max_entries: 5,
+
+  // Hide application descriptions
   hide_description: false,
-  // Tùy chọn terminal để chạy các ứng dụng yêu cầu terminal
+
+  // Terminal emulator for terminal-requiring apps
   terminal: Some(Terminal(
     command: "alacritty",
     args: "-e {}",
   )),
-  // Tùy chọn script tiền xử lý lệnh thực thi
-  // preprocess_exec_script: Some("/path/to/script.sh"),
+
+  // Optional script to pre-process exec commands before running.
+  // Called with: <script> <term|no-term> <original_exec>
+  // stdout is used as the new exec command.
+  // preprocess_exec_script: Some("/path/to/preprocess.sh"),
 )
 ```
 
-### Các trường cấu hình:
+### Config Fields
 
-- `desktop_actions`: (bool) Có hiển thị các hành động bổ sung của ứng dụng hay không.
-- `max_entries`: (usize) Số lượng kết quả tối đa hiển thị.
-- `hide_description`: (bool) Ẩn mô tả ứng dụng.
-- `terminal`: (Option) Cấu hình terminal để chạy ứng dụng.
-- `preprocess_exec_script`: (Option) Đường dẫn tới script xử lý chuỗi lệnh thực thi trước khi chạy.
+- `desktop_actions` (bool): Show desktop action entries. Default: `false`.
+- `max_entries` (usize): Maximum matches displayed. Default: `5`.
+- `hide_description` (bool): Hide the description text under each match. Default: `false`.
+- `terminal` (Option): Terminal emulator config. If `None`, auto-detected from available terminals.
+- `preprocess_exec_script` (Option): Path to an external script that can modify exec commands before running.

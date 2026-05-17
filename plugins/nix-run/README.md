@@ -15,7 +15,7 @@ Config(
   // Whether or not to allow unfree packages
   allow_unfree: false,
   // Nixpkgs channel to get the package list from
-  channel: "nixpkgs-unstable",
+  channel: "nixos-unstable",
   max_entries: 3,
 )
 ```

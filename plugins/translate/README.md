@@ -14,6 +14,5 @@ where the `prefix` and `language_delimiter` are config options (defaults are in 
 Config(
   prefix: ":",
   language_delimiter: ">",
-  max_entries: 3,
 )
 ```
