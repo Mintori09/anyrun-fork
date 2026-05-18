@@ -152,7 +152,7 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
                 })
                 .collect::<Vec<_>>();
 
-            index.sort_by(|a, b| b.2.cmp(&a.2));
+            index.sort_by_key(|b| std::cmp::Reverse(b.2));
 
             index.truncate(state.config.max_entries);
             index

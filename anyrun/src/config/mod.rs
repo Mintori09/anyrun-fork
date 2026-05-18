@@ -111,6 +111,13 @@ impl Config {
                 action: Action::Select,
             },
             Keybind {
+                ctrl: true,
+                alt: false,
+                shift: false,
+                key: gdk::Key::Return,
+                action: Action::OpenActions,
+            },
+            Keybind {
                 ctrl: false,
                 alt: false,
                 shift: false,
@@ -212,6 +219,11 @@ mod tests {
         assert_eq!(cfg.flush_delay_ms, 50);
         assert_eq!(cfg.typing_visual, TypingVisual::DimPrevious);
         assert!(cfg.bare_text_fast_lane.is_empty());
+        assert_eq!(cfg.plugin_timeout_ms, 800);
+        assert_eq!(cfg.slow_plugin_ms, 250);
+        assert_eq!(cfg.prefix_discovery_trigger, "?");
+        assert!(cfg.empty_state.enabled);
+        assert_eq!(cfg.empty_state.recent_limit, 8);
         let app_cfg = Config::default();
         assert!(matches!(app_cfg.width, RelativeNum::Absolute(800)));
         assert!(matches!(app_cfg.y, RelativeNum::Fraction(y) if (y - 0.5).abs() < f64::EPSILON));
@@ -226,7 +238,11 @@ mod tests {
                 flush_delay_ms: 30,
                 typing_visual: KeepPrevious,
                 bare_text_fast_lane: ["Applications", "Translate"],
-                prefix_routes: [(prefix: "ff ", plugins: ["Browser Tabs"])]
+                prefix_routes: [(prefix: "ff ", plugins: ["Browser Tabs"])],
+                plugin_timeout_ms: 900,
+                slow_plugin_ms: 300,
+                prefix_discovery_trigger: "??",
+                empty_state: (enabled: false, recent_limit: 3),
             )"#,
         )
         .unwrap();
@@ -235,5 +251,10 @@ mod tests {
         assert_eq!(config.flush_delay_ms, 30);
         assert_eq!(config.typing_visual, TypingVisual::KeepPrevious);
         assert_eq!(config.prefix_routes[0].plugins, vec!["Browser Tabs"]);
+        assert_eq!(config.plugin_timeout_ms, 900);
+        assert_eq!(config.slow_plugin_ms, 300);
+        assert_eq!(config.prefix_discovery_trigger, "??");
+        assert!(!config.empty_state.enabled);
+        assert_eq!(config.empty_state.recent_limit, 3);
     }
 }

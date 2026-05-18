@@ -96,7 +96,7 @@ fn get_matches(input: RString, state: &Option<State>) -> RVec<Match> {
         })
         .collect();
 
-    scored.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+    scored.sort_unstable_by_key(|b| std::cmp::Reverse(b.0));
     scored.truncate(state.config.max_entries);
 
     let mut id_map = Vec::with_capacity(scored.len());
@@ -116,11 +116,11 @@ fn get_matches(input: RString, state: &Option<State>) -> RVec<Match> {
                 win.app_id.clone().unwrap_or_else(|| "Window".into())
             } else {
                 let mut d = win.title.clone();
-                if let Some(ref app_id) = win.app_id {
-                    if win.app_name.as_deref() != Some(app_id.as_str()) {
-                        d.push_str(" · ");
-                        d.push_str(app_id);
-                    }
+                if let Some(ref app_id) = win.app_id
+                    && win.app_name.as_deref() != Some(app_id.as_str())
+                {
+                    d.push_str(" · ");
+                    d.push_str(app_id);
                 }
                 if let Some(ref ws) = win.workspace {
                     d.push_str(" · ");
@@ -152,10 +152,10 @@ fn handler(selection: Match, state: &Option<State>) -> HandleResult {
 
     if let ROption::RSome(idx) = selection.id {
         let id_map = state.id_map.read().unwrap();
-        if let Some(window_id) = id_map.get(idx as usize) {
-            if let Err(e) = state.backend.focus_window(window_id) {
-                eprintln!("[window-switcher] Failed to focus window: {e}");
-            }
+        if let Some(window_id) = id_map.get(idx as usize)
+            && let Err(e) = state.backend.focus_window(window_id)
+        {
+            eprintln!("[window-switcher] Failed to focus window: {e}");
         }
     }
     HandleResult::Close

@@ -138,7 +138,7 @@ pub fn search_settings(settings: Vec<KDESetting>, query: &str) -> Vec<KDESetting
         })
         .collect();
 
-    ranked_results.sort_by(|a, b| b.0.cmp(&a.0));
+    ranked_results.sort_by_key(|b| std::cmp::Reverse(b.0));
 
     ranked_results
         .into_iter()

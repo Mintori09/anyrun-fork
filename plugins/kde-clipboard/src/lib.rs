@@ -129,7 +129,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
         .collect();
 
     if !query.is_empty() {
-        results.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+        results.sort_unstable_by_key(|b| std::cmp::Reverse(b.0));
     }
 
     results

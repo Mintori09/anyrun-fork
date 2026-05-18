@@ -67,7 +67,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
 
     if !lines.is_empty() {
         if !state.config.preserve_order {
-            lines.sort_by(|a, b| b.1.cmp(&a.1));
+            lines.sort_by_key(|b| std::cmp::Reverse(b.1));
         }
         lines.truncate(state.config.max_entries);
     } else if state.config.allow_invalid {

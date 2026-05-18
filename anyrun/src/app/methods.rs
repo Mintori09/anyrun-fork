@@ -1,6 +1,8 @@
 use super::{App, AppInit, AppWidgets, DaemonContext, SendInvocation};
 use crate::config::{PrefixRoute, TypingVisual};
-use crate::plugin_box::PluginMatchInput;
+use crate::plugin_box::{LocalAction, MatchSource, PluginMatchInput};
+use abi_stable::std_types::ROption;
+use anyrun_interface::{Match, PluginInfo};
 use gtk::prelude::*;
 use gtk4 as gtk;
 use relm4::{ComponentBuilder, ComponentController};
@@ -59,9 +61,20 @@ impl App {
 
     pub(super) fn sync_shortcuts(&mut self, widgets: &AppWidgets) {
         let visible_count = self.matches.iter().filter(|m| m.row.get_visible()).count();
-        widgets
-            .results_count()
-            .set_label(&format!("{visible_count} results"));
+        let health_issues = self
+            .plugin_health
+            .values()
+            .filter(|status| status.state != anyrun_provider_ipc::PluginHealthState::Healthy)
+            .count();
+        if health_issues == 0 {
+            widgets
+                .results_count()
+                .set_label(&format!("{visible_count} results"));
+        } else {
+            widgets.results_count().set_label(&format!(
+                "{visible_count} results · {health_issues} plugin issues"
+            ));
+        }
         widgets.footer().set_visible(true);
 
         if !self.show_shortcuts {
@@ -142,9 +155,9 @@ impl App {
 
         self.plugin_names
             .iter()
+            .filter(|&name| !fast_lane.contains(name))
+            .filter(|&name| !self.current_input.trim().is_empty() || !prefixed.contains(name))
             .cloned()
-            .filter(|name| !fast_lane.contains(name))
-            .filter(|name| !self.current_input.trim().is_empty() || !prefixed.contains(name))
             .collect()
     }
 
@@ -210,5 +223,130 @@ impl App {
             .into_iter()
             .filter(|n| !prefixed.contains(n))
             .collect()
+    }
+
+    pub(super) fn request_empty_state(&self) {
+        if self.config.search_ux.empty_state.enabled {
+            let _ = self.tx.try_send(anyrun_provider_ipc::Request::Recent {
+                limit: self.config.search_ux.empty_state.recent_limit,
+            });
+        }
+    }
+
+    pub(super) fn show_prefix_discovery(&mut self, widgets: &mut AppWidgets, root: &gtk::Window) {
+        let mut guard = self.matches.guard();
+        guard.clear();
+        let info = PluginInfo {
+            name: "Anyrun".into(),
+            icon: "system-search".into(),
+        };
+        for route in &self.config.search_ux.prefix_routes {
+            let title = if route.prefix.is_empty() {
+                "(bare text)".to_string()
+            } else {
+                route.prefix.clone()
+            };
+            let description = route.plugins.join(", ");
+            let item = Match {
+                title: title.into(),
+                description: if description.is_empty() {
+                    ROption::RNone
+                } else {
+                    ROption::RSome(description.into())
+                },
+                use_pango: false,
+                icon: ROption::RSome("system-search".into()),
+                id: ROption::RNone,
+            };
+            guard.push_back((
+                item,
+                self.config.clone(),
+                "Prefix".to_string(),
+                info.clone(),
+                MatchSource::Prefix {
+                    prefix: route.prefix.clone(),
+                },
+            ));
+        }
+        drop(guard);
+        self.finish_local_rows(widgets, root);
+    }
+
+    pub(super) fn show_recent_matches(
+        &mut self,
+        recent: Vec<anyrun_provider_ipc::RecentMatch>,
+        widgets: &mut AppWidgets,
+        root: &gtk::Window,
+    ) {
+        let mut guard = self.matches.guard();
+        guard.clear();
+        for item in recent {
+            guard.push_back((
+                item.selection,
+                self.config.clone(),
+                "Recent".to_string(),
+                item.plugin,
+                MatchSource::Recent,
+            ));
+        }
+        drop(guard);
+        self.finish_local_rows(widgets, root);
+    }
+
+    pub(super) fn show_action_menu(&mut self, widgets: &mut AppWidgets, root: &gtk::Window) {
+        let Some(current) = self.matches.get(self.selected_index) else {
+            return;
+        };
+        let plugin = current.plugin_info.clone();
+        let selection = current.content.clone();
+        let mut actions = vec![
+            (LocalAction::DefaultOpen, "Open", "Run default action"),
+            (LocalAction::CopyTitle, "Copy title", "Copy result title"),
+        ];
+        if matches!(selection.description, ROption::RSome(_)) {
+            actions.push((
+                LocalAction::CopyDescription,
+                "Copy description",
+                "Copy result description",
+            ));
+        }
+
+        let info = PluginInfo {
+            name: "Actions".into(),
+            icon: "system-run".into(),
+        };
+        let mut guard = self.matches.guard();
+        guard.clear();
+        for (action, title, description) in actions {
+            let item = Match {
+                title: title.into(),
+                description: ROption::RSome(description.into()),
+                use_pango: false,
+                icon: ROption::RSome("system-run".into()),
+                id: ROption::RNone,
+            };
+            guard.push_back((
+                item,
+                self.config.clone(),
+                "Action".to_string(),
+                info.clone(),
+                MatchSource::Action {
+                    action,
+                    plugin: plugin.clone(),
+                    selection: selection.clone(),
+                },
+            ));
+        }
+        drop(guard);
+        self.finish_local_rows(widgets, root);
+    }
+
+    pub(super) fn finish_local_rows(&mut self, widgets: &mut AppWidgets, root: &gtk::Window) {
+        self.selected_index = 0;
+        widgets.scroll().vadjustment().set_value(0.0);
+        self.apply_results_layout(widgets, root);
+        self.clear_pending_visual_state(widgets);
+        self.sync_ui_selection(widgets);
+        self.sync_shortcuts(widgets);
     }
 }

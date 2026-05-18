@@ -171,6 +171,7 @@ impl App {
             last_visible_count: 0,
             last_flush_hash: 1,
             show_shortcuts: false,
+            plugin_health: std::collections::HashMap::new(),
         };
 
         if model.is_daemon {

@@ -1,5 +1,5 @@
 use super::{App, AppWidgets};
-use crate::plugin_box::plugin_type_label;
+use crate::plugin_box::{plugin_type_label, MatchSource};
 use gtk::prelude::*;
 use gtk4 as gtk;
 use std::hash::{Hash, Hasher};
@@ -94,7 +94,13 @@ impl App {
                         icon: String::new().into(),
                     }
                 });
-                guard.push_back((m, self.config.clone(), plugin_type_label(&name), info));
+                guard.push_back((
+                    m,
+                    self.config.clone(),
+                    plugin_type_label(&name),
+                    info,
+                    MatchSource::Provider,
+                ));
             }
         }
 
@@ -113,7 +119,7 @@ impl App {
         self.sync_shortcuts(widgets);
     }
 
-    fn apply_results_layout(&mut self, widgets: &mut AppWidgets, root: &gtk::Window) {
+    pub(super) fn apply_results_layout(&mut self, widgets: &mut AppWidgets, root: &gtk::Window) {
         let max_entries = self.config.max_entries;
 
         if let Some(max_entries) = max_entries {

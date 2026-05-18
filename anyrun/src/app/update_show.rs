@@ -53,13 +53,16 @@ impl App {
         root.set_opacity(1.0); // Continuation of the Sway hack
         widgets.entry().grab_focus_without_selecting();
 
-        // If show_results_immediately is enabled, trigger initial search with empty input
         if self.config.show_results_immediately {
             let _ = self.tx.try_send(anyrun_provider_ipc::Request::Query {
                 text: String::new(),
                 phase: QueryPhase::Settling,
                 plugins: Vec::new(),
+                timeout_ms: self.config.search_ux.plugin_timeout_ms,
+                slow_ms: self.config.search_ux.slow_plugin_ms,
             });
+        } else {
+            self.request_empty_state();
         }
     }
 
@@ -120,12 +123,16 @@ impl App {
             }
         }
 
-        if self.is_daemon {
+        if self.is_daemon && self.config.show_results_immediately {
             let _ = self.tx.try_send(anyrun_provider_ipc::Request::Query {
                 text: String::new(),
                 phase: QueryPhase::Settling,
                 plugins: Vec::new(),
+                timeout_ms: self.config.search_ux.plugin_timeout_ms,
+                slow_ms: self.config.search_ux.slow_plugin_ms,
             });
+        } else if self.is_daemon {
+            self.request_empty_state();
         }
     }
 }

@@ -39,11 +39,11 @@ test target="all":
 
 run:
     just build bin
-    ./target/release/anyrun
+    ./target/release/anyrun --provider ./target/release/anyrun-provider
 
 daemon:
     just build all
-    ./target/release/anyrun daemon
+    ./target/release/anyrun --provider ./target/release/anyrun-provider daemon
 
 install:
     sudo cp ./target/release/anyrun /usr/bin

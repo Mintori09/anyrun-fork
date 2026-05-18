@@ -127,7 +127,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
     let mut ranked_actions = filter_and_score_actions(state, query, is_initial_view);
 
     if !is_initial_view {
-        ranked_actions.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+        ranked_actions.sort_unstable_by_key(|b| std::cmp::Reverse(b.0));
     }
 
     create_matches(ranked_actions, state, limit)

@@ -90,6 +90,9 @@ anyrun daemon &
 
 # Launch the runner
 anyrun
+
+# Diagnose config, provider, and plugins
+anyrun doctor
 ```
 
 ### Arguments
@@ -100,6 +103,7 @@ anyrun
 | `--plugins` | | Override loaded plugins (repeatable) |
 | `--position` | | Override window position (e.g. `top`, `center`) |
 | `daemon` | | Start in daemon mode (D-Bus single-instance) |
+| `doctor` | | Check config, provider path, and plugin loadability |
 
 Any config field can be overridden via CLI. Example:
 ```bash
@@ -137,8 +141,8 @@ Key options:
 - `max_entries`: Global result limit (None = unlimited)
 - `plugins`: Ordered list of plugin `.so` files (order = priority)
 - `provider`: Path to `anyrun-provider` binary
-- `keybinds`: Custom key binding actions (Select, Up, Down, Close)
-- `search_ux`: Search UX tuning (settle/flush delays, typing visual, prefix routes)
+- `keybinds`: Custom key binding actions (Select, OpenActions, Up, Down, Close)
+- `search_ux`: Search UX tuning (settle/flush delays, plugin timeout/health, prefix discovery, empty recent state)
 
 ### Styling
 
@@ -146,7 +150,7 @@ Anyrun supports [GTK4 CSS](https://docs.gtk.org/gtk4/css-properties.html). Style
 
 | Class | Widget | Description |
 |-------|--------|-------------|
-| (none) | `GtkText` | Main entry box |
+| (none) | `GtkEntry` | Main entry box |
 | (none) | `GtkWindow` | Main window |
 | `.main` | `GtkBox` | Container box |
 | `.matches` | `GtkBox` | Results container |
