@@ -54,6 +54,11 @@ Config(
       action: Select, 
     ),
     Keybind(
+      key: "Return",
+      ctrl: true,
+      action: OpenActions,
+    ),
+    Keybind(
       key: "Up",
       action: Up, 
     ),
@@ -75,4 +80,19 @@ Config(
       action: Close, 
     ),
   ],
+
+  search_ux: (
+    settle_delay_ms: 200,
+    flush_delay_ms: 50,
+    typing_visual: DimPrevious,
+    plugin_timeout_ms: 800,
+    slow_plugin_ms: 250,
+    prefix_discovery_trigger: "?",
+    empty_state: (
+      enabled: true,
+      recent_limit: 8,
+    ),
+    bare_text_fast_lane: [],
+    prefix_routes: [],
+  ),
 )

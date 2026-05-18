@@ -5,6 +5,7 @@ use serde::{de::Visitor, Deserialize, Deserializer};
 pub enum Action {
     Close,
     Select,
+    OpenActions,
     Up,
     Down,
     ReloadConfig,

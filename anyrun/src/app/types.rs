@@ -45,6 +45,7 @@ pub struct App {
     pub(super) last_visible_count: usize,
     pub(super) last_flush_hash: u64,
     pub(super) show_shortcuts: bool,
+    pub(super) plugin_health: HashMap<String, anyrun_provider_ipc::PluginHealth>,
 }
 
 #[derive(Debug, Clone)]

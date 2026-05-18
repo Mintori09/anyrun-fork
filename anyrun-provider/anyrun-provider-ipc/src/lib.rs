@@ -35,6 +35,15 @@ pub enum Request {
         phase: QueryPhase,
         /// Limit execution to these plugin names when non-empty.
         plugins: Vec<String>,
+        /// Maximum time to wait for each plugin during this query.
+        timeout_ms: u64,
+        /// Threshold for reporting a plugin as slow.
+        slow_ms: u64,
+    },
+    /// Return recently selected matches.
+    Recent {
+        /// Maximum number of recent matches to return.
+        limit: usize,
     },
     /// Handle a selection using a plugin
     Handle {
@@ -53,6 +62,29 @@ pub enum Request {
         /// The plugin name (e.g. "calc" for "calc.ron")
         name: String,
     },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecentMatch {
+    pub plugin: PluginInfo,
+    pub selection: Match,
+    pub last_used_unix: i64,
+    pub uses: u32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PluginHealthState {
+    Healthy,
+    Slow,
+    TimedOut,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginHealth {
+    pub plugin: String,
+    pub state: PluginHealthState,
+    pub elapsed_ms: u64,
 }
 
 /// Responses from provider to subscriber
@@ -84,6 +116,10 @@ pub enum Response {
         /// The result provided by the plugin
         result: HandleResult,
     },
+    /// Recently selected matches.
+    Recent { matches: Vec<RecentMatch> },
+    /// Plugin health updates from query execution.
+    Health { statuses: Vec<PluginHealth> },
 }
 
 /// Possible errors reported by the provider
@@ -155,7 +191,10 @@ mod tests {
                 text: "test".into(),
                 phase: QueryPhase::Typing,
                 plugins: vec!["Applications".into()],
+                timeout_ms: 800,
+                slow_ms: 250,
             },
+            Request::Recent { limit: 8 },
             Request::Quit,
             Request::ReloadPlugins,
         ];
@@ -163,6 +202,47 @@ mod tests {
             let bytes = bincode::serialize(&req).unwrap();
             let deserialized: Request = bincode::deserialize(&bytes).unwrap();
             assert_eq!(format!("{req:?}"), format!("{deserialized:?}"));
+        }
+    }
+
+    #[test]
+    fn test_recent_and_health_responses_roundtrip() {
+        use anyrun_interface::{Match, PluginInfo, abi_stable::std_types::ROption};
+
+        let plugin = PluginInfo {
+            name: "Applications".into(),
+            icon: "system-search".into(),
+        };
+        let selection = Match {
+            title: "Firefox".into(),
+            description: ROption::RNone,
+            use_pango: false,
+            icon: ROption::RNone,
+            id: ROption::RNone,
+        };
+
+        let responses = vec![
+            Response::Recent {
+                matches: vec![RecentMatch {
+                    plugin: plugin.clone(),
+                    selection,
+                    last_used_unix: 123,
+                    uses: 2,
+                }],
+            },
+            Response::Health {
+                statuses: vec![PluginHealth {
+                    plugin: plugin.name.to_string(),
+                    state: PluginHealthState::Slow,
+                    elapsed_ms: 300,
+                }],
+            },
+        ];
+
+        for response in responses {
+            let bytes = bincode::serialize(&response).unwrap();
+            let deserialized: Response = bincode::deserialize(&bytes).unwrap();
+            assert_eq!(format!("{response:?}"), format!("{deserialized:?}"));
         }
     }
 }

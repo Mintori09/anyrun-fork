@@ -11,6 +11,7 @@ pub use types::*;
 use crate::config;
 use adw::prelude::*;
 use gtk::glib;
+use gtk::EntryIconPosition;
 use gtk4 as gtk;
 use gtk4_layer_shell::LayerShell;
 use libadwaita as adw;
@@ -94,12 +95,12 @@ impl Component for App {
                 set_css_classes: &["main"],
 
                 #[name = "_entry"]
-                  gtk::Text {
-                  set_hexpand: true,
-                  set_activates_default: false,
-                  connect_changed[sender] => move |entry| {
-                      sender.input(AppMsg::EntryChanged(entry.text().into()));
-                  },
+                gtk::Entry {
+                    set_hexpand: true,
+                    set_activates_default: false,
+                    connect_changed[sender] => move |entry| {
+                        sender.input(AppMsg::EntryChanged(entry.text().into()));
+                    },
 
                         add_controller = gtk::EventControllerKey {
                             connect_key_pressed[sender] => move |_, key, _, modifier| {
@@ -184,7 +185,12 @@ impl Component for App {
             Self::init_model(init, &root, sender.clone());
 
         let widgets = view_output!();
+
         widgets.entry().set_placeholder_text(Some("Search"));
+
+        widgets
+            .entry()
+            .set_icon_from_icon_name(EntryIconPosition::Primary, Some("system-search-symbolic"));
 
         ComponentParts { model, widgets }
     }
@@ -213,7 +219,7 @@ impl Component for App {
 }
 
 impl AppWidgets {
-    pub(super) fn entry(&self) -> &gtk::Text {
+    pub(super) fn entry(&self) -> &gtk::Entry {
         &self._entry
     }
     pub(super) fn scroll(&self) -> &gtk::ScrolledWindow {

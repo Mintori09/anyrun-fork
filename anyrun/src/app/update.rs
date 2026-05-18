@@ -1,6 +1,6 @@
 use super::{App, AppMsg, AppWidgets, PostRunAction, SendInvocation, DEFAULT_CSS};
 use crate::config::{Action, Config, Keybind};
-use crate::plugin_box::PluginMatchInput;
+use crate::plugin_box::{LocalAction, MatchSource, PluginMatchInput};
 use anyrun_provider_ipc as ipc;
 use anyrun_provider_ipc::QueryPhase;
 use gtk::prelude::*;
@@ -95,7 +95,9 @@ impl App {
                                 }
                                 PostRunAction::None => (),
                             }
-                            root.application().unwrap().quit();
+                            if let Some(app) = root.application() {
+                                app.quit();
+                            }
                         }
 
                         if self.is_daemon {
@@ -150,14 +152,49 @@ impl App {
                     }
                     Action::Select => {
                         if let Some(plugin_match) = self.matches.get(self.selected_index) {
-                            let info = plugin_match.plugin_info.clone();
-                            let content = plugin_match.content.clone();
+                            match &plugin_match.source {
+                                MatchSource::Provider | MatchSource::Recent => {
+                                    let info = plugin_match.plugin_info.clone();
+                                    let content = plugin_match.content.clone();
 
-                            let _ = self.tx.try_send(ipc::Request::Handle {
-                                plugin: info,
-                                selection: content,
-                            });
+                                    let _ = self.tx.try_send(ipc::Request::Handle {
+                                        plugin: info,
+                                        selection: content,
+                                    });
+                                }
+                                MatchSource::Prefix { prefix } => {
+                                    widgets.entry().set_text(prefix);
+                                    widgets.entry().grab_focus_without_selecting();
+                                }
+                                MatchSource::Action {
+                                    action,
+                                    plugin,
+                                    selection,
+                                } => match action {
+                                    LocalAction::DefaultOpen => {
+                                        let _ = self.tx.try_send(ipc::Request::Handle {
+                                            plugin: plugin.clone(),
+                                            selection: selection.clone(),
+                                        });
+                                    }
+                                    LocalAction::CopyTitle => {
+                                        root.clipboard().set_text(selection.title.as_str());
+                                        sender.input(AppMsg::Action(Action::Close));
+                                    }
+                                    LocalAction::CopyDescription => {
+                                        if let abi_stable::std_types::ROption::RSome(desc) =
+                                            &selection.description
+                                        {
+                                            root.clipboard().set_text(desc.as_str());
+                                        }
+                                        sender.input(AppMsg::Action(Action::Close));
+                                    }
+                                },
+                            }
                         }
+                    }
+                    Action::OpenActions => {
+                        self.show_action_menu(widgets, root);
                     }
                     Action::ReloadConfig => {
                         if let Some(config_dir) = &self.config_dir {
@@ -204,6 +241,8 @@ impl App {
                             text: self.current_input.clone(),
                             phase: QueryPhase::Settling,
                             plugins: Vec::new(),
+                            timeout_ms: self.config.search_ux.plugin_timeout_ms,
+                            slow_ms: self.config.search_ux.slow_plugin_ms,
                         });
 
                         // 6. Re-apply window geometry
@@ -238,6 +277,22 @@ impl App {
                 self.pending_settle_epoch = Some(self.search_epoch);
                 self.settling_plugins_sent.clear();
 
+                if text == self.config.search_ux.prefix_discovery_trigger {
+                    if let Some(cancellable) = self.search_cancellable.take() {
+                        cancellable.cancel();
+                    }
+                    self.show_prefix_discovery(widgets, root);
+                    return;
+                }
+
+                if text.trim().is_empty() && !self.config.show_results_immediately {
+                    if let Some(cancellable) = self.search_cancellable.take() {
+                        cancellable.cancel();
+                    }
+                    self.request_empty_state();
+                    return;
+                }
+
                 // Detect rapid typing (keystrokes within 100ms of each other)
                 let now = std::time::Instant::now();
                 let is_rapid = self
@@ -246,11 +301,7 @@ impl App {
                     .unwrap_or(false);
 
                 // Track rapid typing for animation skipping
-                if is_rapid {
-                    self.skip_animations = true;
-                } else {
-                    self.skip_animations = false;
-                }
+                self.skip_animations = is_rapid;
                 self.last_entry_change = Some(now);
 
                 // Keep previous results during rapid typing to avoid strobing
@@ -277,6 +328,8 @@ impl App {
                     text: text.clone(),
                     phase: QueryPhase::Typing,
                     plugins: typing_plugins,
+                    timeout_ms: self.config.search_ux.plugin_timeout_ms,
+                    slow_ms: self.config.search_ux.slow_plugin_ms,
                 });
 
                 if settle_delay == 0 {
@@ -337,6 +390,8 @@ impl App {
                     text,
                     phase: QueryPhase::Settling,
                     plugins,
+                    timeout_ms: self.config.search_ux.plugin_timeout_ms,
+                    slow_ms: self.config.search_ux.slow_plugin_ms,
                 });
             }
         }

@@ -7,6 +7,7 @@ mod client;
 mod config;
 mod daemon;
 mod dbus;
+mod doctor;
 mod plugin_box;
 mod provider;
 
@@ -38,6 +39,9 @@ fn main() {
             Command::Reload => {
                 fast_ipc_call("Reload");
                 return;
+            }
+            Command::Doctor => {
+                std::process::exit(doctor::run(args.config_dir.as_deref()));
             }
         }
     }

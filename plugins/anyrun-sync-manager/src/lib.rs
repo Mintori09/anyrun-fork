@@ -110,7 +110,7 @@ fn get_matches_fuzzy_finder(list: Vec<SyncManager>, query: Vec<&str>) -> Vec<Syn
         })
         .collect();
 
-    matches.sort_by(|a, b| b.0.cmp(&a.0));
+    matches.sort_by_key(|b| std::cmp::Reverse(b.0));
 
     matches.into_iter().map(|(_, sync)| sync).collect()
 }
@@ -134,32 +134,42 @@ fn handler(selection: Match, _state: &State) -> HandleResult {
 mod tests {
 
     use super::*;
-    use std::{env, fs, path::PathBuf};
+    use std::fs;
 
     #[test]
-    fn test_read_real_config() {
-        let home_dir = env::var("HOME").expect("Không tìm thấy biến môi trường HOME");
+    fn test_read_sample_config() {
+        let config_path = std::env::temp_dir().join(format!(
+            "anyrun-sync-manager-{}.ron",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::write(
+            &config_path,
+            r#"(
+                prefix: "sy ",
+                max_entries: 5,
+                scopes: [
+                    (name: "Backup", source: "~/bin/backup.sh", icon: Search),
+                ],
+            )"#,
+        )
+        .unwrap();
 
-        let config_path = PathBuf::from(home_dir)
-            .join(".config")
-            .join("anyrun")
-            .join("sync_manager.ron");
-
-        assert!(
-            config_path.exists(),
-            "File cấu hình không tồn tại tại: {:?}",
-            config_path
-        );
-
-        let content = fs::read_to_string(&config_path).expect("Không thể đọc file cấu hình");
+        let content = fs::read_to_string(&config_path).expect("Không thể đọc file cấu hình mẫu");
 
         let result: Result<Config, _> = ron::from_str(&content);
 
         match result {
             Ok(config) => {
-                println!("Đọc config thành công! Số lượng scopes: {:?}", config);
+                assert_eq!(config.prefix, "sy ");
+                assert_eq!(config.max_entries, 5);
+                assert_eq!(config.scopes.len(), 1);
             }
             Err(e) => panic!("File RON tồn tại nhưng sai cấu trúc: {}", e),
         }
+
+        let _ = fs::remove_file(config_path);
     }
 }

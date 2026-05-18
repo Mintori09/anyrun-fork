@@ -126,8 +126,8 @@ pub fn init(config_dir: RString) -> State {
         ("Logout", "hyprctl dispatch exit", "system-log-out"),
     ];
 
-    let mut next_id = raw_entries.iter().map(|(_, id)| *id).max().unwrap_or(0) + 1;
-    for (name, exec, icon) in custom_actions {
+    let next_id = raw_entries.iter().map(|(_, id)| *id).max().unwrap_or(0) + 1;
+    for (next_id, (name, exec, icon)) in (next_id..).zip(custom_actions) {
         let entry = DesktopEntry {
             name: name.to_string(),
             exec: exec.to_string(),
@@ -142,7 +142,6 @@ pub fn init(config_dir: RString) -> State {
             path: None,
         };
         raw_entries.push((entry, next_id));
-        next_id += 1;
     }
 
     // Tối ưu I/O: Tìm terminal khả dụng 1 lần duy nhất
@@ -301,7 +300,7 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
             })
             .collect();
 
-        scored_results.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+        scored_results.sort_unstable_by_key(|b| std::cmp::Reverse(b.1));
 
         scored_results
             .into_iter()

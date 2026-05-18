@@ -154,7 +154,7 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
             })
             .collect();
 
-        scored_matches.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+        scored_matches.sort_unstable_by_key(|b| std::cmp::Reverse(b.0));
 
         return scored_matches
             .into_iter()

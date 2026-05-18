@@ -9,6 +9,7 @@ use std::{path::PathBuf, sync::Arc};
 pub struct PluginMatch {
     pub content: Match,
     pub plugin_info: PluginInfo,
+    pub source: MatchSource,
     pub row: gtk::ListBoxRow,
     pub(super) config: Arc<Config>,
     pub(super) type_label: String,
@@ -21,9 +22,30 @@ pub enum PluginMatchInput {
     SetShortcut(Option<usize>),
 }
 
+#[derive(Debug, Clone)]
+pub enum MatchSource {
+    Provider,
+    Recent,
+    Prefix {
+        prefix: String,
+    },
+    Action {
+        action: LocalAction,
+        plugin: PluginInfo,
+        selection: Match,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocalAction {
+    DefaultOpen,
+    CopyTitle,
+    CopyDescription,
+}
+
 #[relm4::factory(pub)]
 impl FactoryComponent for PluginMatch {
-    type Init = (Match, Arc<Config>, String, PluginInfo);
+    type Init = (Match, Arc<Config>, String, PluginInfo, MatchSource);
     type Input = PluginMatchInput;
     type Output = ();
     type CommandOutput = ();
@@ -120,7 +142,7 @@ impl FactoryComponent for PluginMatch {
     }
 
     fn init_model(
-        (content, config, type_label, plugin_info): Self::Init,
+        (content, config, type_label, plugin_info, source): Self::Init,
         _index: &Self::Index,
         _sender: FactorySender<Self>,
     ) -> Self {
@@ -132,6 +154,7 @@ impl FactoryComponent for PluginMatch {
             config,
             type_label: type_label.clone(),
             plugin_info,
+            source,
             _shortcut: None,
             badge_label: type_label,
         }

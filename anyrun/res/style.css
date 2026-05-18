@@ -36,9 +36,22 @@ box.main {
 }
 
 /* ── Search entry ───────────────────────────────────────── */
+entry {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+entry:focus {
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
 text {
   min-height: 60px;
-  padding: 0 22px;
+  padding: 0 18px;
   font-size: 20px;
   font-weight: 400;
   letter-spacing: -0.01em;
@@ -46,10 +59,14 @@ text {
   caret-color: @accent;
 }
 
+text:focus {
+  outline: none;
+}
+
 /* ── Results container ──────────────────────────────────── */
 .matches {
   background: transparent;
-  padding: 6px 0 8px;
+  padding: 3px 0 6px;
 }
 
 .matches.matches-entered {
@@ -64,7 +81,7 @@ text {
 
 /* ── Individual match row ───────────────────────────────── */
 box.match {
-  padding: 8px 16px;
+  padding: 5px 12px;
   border-radius: 0;
   background: transparent;
   transition: background 80ms ease;

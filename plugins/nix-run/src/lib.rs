@@ -199,7 +199,7 @@ fn get_matches(input: RString, state: &mut State) -> RVec<Match> {
         })
         .collect::<Vec<_>>();
 
-    entries.sort_by(|a, b| b.2.cmp(&a.2));
+    entries.sort_by_key(|b| std::cmp::Reverse(b.2));
     entries.truncate(state.config.max_entries);
 
     entries

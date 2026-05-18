@@ -1,5 +1,8 @@
 use anyrun_interface::{HandleResult, Match, PluginInfo, PluginRef, abi_stable};
-use anyrun_provider_ipc::{CONFIG_DIRS, PLUGIN_PATHS, Request, Response, Socket};
+use anyrun_provider_ipc::{
+    CONFIG_DIRS, PLUGIN_PATHS, PluginHealth, PluginHealthState, RecentMatch, Request, Response,
+    Socket,
+};
 use chrono::{DateTime, Utc};
 use clap::{Parser, Subcommand};
 use notify::RecommendedWatcher;
@@ -13,17 +16,27 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+use std::time::Instant;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{Mutex, broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
 
-// Định nghĩa alias để code gọn gàng hơn
-type PluginQueryResult = (usize, u64, abi_stable::std_types::RVec<Match>);
+struct PluginQueryResult {
+    plugin_idx: usize,
+    query_id: u64,
+    query_text: Arc<str>,
+    matches: abi_stable::std_types::RVec<Match>,
+    elapsed_ms: u64,
+    slow_ms: u64,
+    timed_out: bool,
+}
 
 #[derive(Clone)]
 struct QueuedQuery {
     query_id: u64,
     text: Arc<str>,
+    timeout_ms: u64,
+    slow_ms: u64,
 }
 
 struct PluginSearchWorker {
@@ -36,7 +49,10 @@ type SearchFn = Arc<dyn Fn(Arc<str>) -> abi_stable::std_types::RVec<Match> + Sen
 #[derive(Serialize, Deserialize, Default)]
 struct FrecencyData {
     // (plugin_name, match_title) -> timestamps
+    #[serde(default)]
     pub usage: HashMap<(String, String), Vec<DateTime<Utc>>>,
+    #[serde(default)]
+    pub recent: Vec<RecentMatch>,
 }
 
 impl FrecencyData {
@@ -62,14 +78,14 @@ impl FrecencyData {
             usages.retain(|&time| now.signed_duration_since(time) <= max_age);
         }
         self.usage.retain(|_, usages| !usages.is_empty());
+        let min_unix = (now - max_age).timestamp();
+        self.recent
+            .retain(|entry| entry.last_used_unix >= min_unix && entry.uses > 0);
+        self.recent
+            .sort_by_key(|entry| std::cmp::Reverse(entry.last_used_unix));
     }
 
-    pub fn batch_get_scores(
-        &self,
-        plugin: &str,
-        titles: &[&str],
-        half_life_days: f64,
-    ) -> Vec<f64> {
+    pub fn batch_get_scores(&self, plugin: &str, titles: &[&str], half_life_days: f64) -> Vec<f64> {
         let now = Utc::now();
         let mut results = Vec::with_capacity(titles.len());
         for &title in titles {
@@ -85,6 +101,70 @@ impl FrecencyData {
         }
         results
     }
+
+    pub fn record_selection(&mut self, plugin: &PluginInfo, selection: &Match) {
+        let now = Utc::now();
+        self.usage
+            .entry((plugin.name.to_string(), selection.title.to_string()))
+            .or_default()
+            .push(now);
+
+        let plugin_name = plugin.name.as_str();
+        let title = selection.title.as_str();
+        if let Some(existing) = self.recent.iter_mut().find(|entry| {
+            entry.plugin.name.as_str() == plugin_name && entry.selection.title.as_str() == title
+        }) {
+            existing.selection = selection.clone();
+            existing.last_used_unix = now.timestamp();
+            existing.uses = existing.uses.saturating_add(1);
+        } else {
+            self.recent.push(RecentMatch {
+                plugin: plugin.clone(),
+                selection: selection.clone(),
+                last_used_unix: now.timestamp(),
+                uses: 1,
+            });
+        }
+        self.cleanup();
+    }
+
+    pub fn recent_matches(&self, limit: usize) -> Vec<RecentMatch> {
+        let mut recent = self.recent.clone();
+        recent.sort_by_key(|entry| std::cmp::Reverse(entry.last_used_unix));
+        recent.truncate(limit);
+        recent
+    }
+}
+
+fn rank_matches(
+    plugin: &str,
+    query_text: &str,
+    mut matches: abi_stable::std_types::RVec<Match>,
+    frecency: &FrecencyData,
+) -> abi_stable::std_types::RVec<Match> {
+    let titles: Vec<&str> = matches.iter().map(|m| m.title.as_str()).collect();
+    let scores = frecency.batch_get_scores(plugin, &titles, 7.0);
+    let query = query_text.trim().to_lowercase();
+
+    let mut scored: Vec<(Match, f64)> = Vec::with_capacity(matches.len());
+    for (i, (m, f_score)) in matches.drain(..).zip(scores).enumerate() {
+        let title = m.title.as_str().to_lowercase();
+        let exact_boost = if !query.is_empty() && title == query {
+            2.0
+        } else {
+            0.0
+        };
+        let starts_with_boost = if !query.is_empty() && title.starts_with(&query) {
+            0.35
+        } else {
+            0.0
+        };
+        let score = (1.0 / (1.0 + i as f64)) + f_score * 0.4 + exact_boost + starts_with_boost;
+        scored.push((m, score));
+    }
+
+    scored.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+    scored.into_iter().map(|(m, _)| m).collect()
 }
 
 #[derive(Parser)]
@@ -148,16 +228,45 @@ fn spawn_query_worker(
             last_query_id = query.query_id;
             let query_text = query.text.clone();
             let query_id = query.query_id;
+            let timeout_ms = query.timeout_ms;
+            let slow_ms = query.slow_ms;
             let search_fn = Arc::clone(&search_fn);
+            let started = Instant::now();
 
-            match tokio::task::spawn_blocking(move || search_fn(query_text)).await {
-                Ok(matches) => {
-                    let _ = result_tx.send((plugin_idx, query_id, matches));
+            match tokio::time::timeout(
+                Duration::from_millis(timeout_ms),
+                tokio::task::spawn_blocking(move || search_fn(query_text.clone())),
+            )
+            .await
+            {
+                Ok(Ok(matches)) => {
+                    let elapsed_ms = started.elapsed().as_millis() as u64;
+                    let _ = result_tx.send(PluginQueryResult {
+                        plugin_idx,
+                        query_id,
+                        query_text: query.text.clone(),
+                        matches,
+                        elapsed_ms,
+                        slow_ms,
+                        timed_out: false,
+                    });
                 }
-                Err(err) => {
+                Ok(Err(err)) => {
                     eprintln!(
                         "[provider] Search worker failed for plugin index {plugin_idx}: {err}"
                     );
+                }
+                Err(_) => {
+                    let elapsed_ms = started.elapsed().as_millis() as u64;
+                    let _ = result_tx.send(PluginQueryResult {
+                        plugin_idx,
+                        query_id,
+                        query_text: query.text.clone(),
+                        matches: Vec::new().into(),
+                        elapsed_ms,
+                        slow_ms,
+                        timed_out: true,
+                    });
                 }
             }
 
@@ -295,35 +404,40 @@ async fn worker(
 
     loop {
         tokio::select! {
-            Some((idx, query_id, mut matches)) = result_rx.recv() => {
-                if query_id != *plugin_query_ids.get(idx).unwrap_or(&0) {
+            Some(result) = result_rx.recv() => {
+                if result.query_id != *plugin_query_ids.get(result.plugin_idx).unwrap_or(&0) {
                     continue;
                 }
 
-                if let Some(p_state) = state.plugins.get(idx) {
+                if let Some(p_state) = state.plugins.get(result.plugin_idx) {
                     let plugin_name = p_state.info.name.as_str();
-
-                    // Collect titles before acquiring lock
-                    let titles: Vec<&str> = matches.iter().map(|m| m.title.as_str()).collect();
-
-                    // Batch-get all scores in one lock acquisition
-                    let scores = {
-                        let frecency = state.frecency.lock().await;
-                        frecency.batch_get_scores(plugin_name, &titles, 7.0)
+                    let health_state = if result.timed_out {
+                        PluginHealthState::TimedOut
+                    } else if result.elapsed_ms >= result.slow_ms {
+                        PluginHealthState::Slow
+                    } else {
+                        PluginHealthState::Healthy
                     };
+                    socket.send(&Response::Health {
+                        statuses: vec![PluginHealth {
+                            plugin: plugin_name.to_string(),
+                            state: health_state,
+                            elapsed_ms: result.elapsed_ms,
+                        }],
+                    }).await?;
 
-                    // Score and sort outside lock
-                    let mut scored: Vec<(Match, f64)> = Vec::with_capacity(matches.len());
-                    for (i, (m, f_score)) in matches.drain(..).zip(scores).enumerate() {
-                        let score = (1.0 / (1.0 + i as f64)) + f_score * 0.1;
-                        scored.push((m, score));
+                    if result.timed_out {
+                        socket.send(&Response::Matches {
+                            plugin: p_state.info.clone(),
+                            matches: Vec::new().into(),
+                        }).await?;
+                        continue;
                     }
 
-                    scored.sort_by(|(_, a), (_, b)| {
-                        b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal)
-                    });
-
-                    matches = scored.into_iter().map(|(m, _)| m).collect();
+                    let matches = {
+                        let frecency = state.frecency.lock().await;
+                        rank_matches(plugin_name, &result.query_text, result.matches, &frecency)
+                    };
 
                     socket.send(&Response::Matches {
                         plugin: p_state.info.clone(),
@@ -340,7 +454,7 @@ async fn worker(
                 };
 
                 match request {
-                Request::Query { text, plugins, .. } => {
+                Request::Query { text, plugins, timeout_ms, slow_ms, .. } => {
                     let query_id = QUERY_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
 
                     let query: Arc<str> = text.into();
@@ -368,6 +482,8 @@ async fn worker(
                             let _ = worker.query_tx.send(Some(QueuedQuery {
                                 query_id,
                                 text: Arc::clone(&query),
+                                timeout_ms,
+                                slow_ms,
                             }));
                         }
                     }
@@ -375,11 +491,7 @@ async fn worker(
                     Request::Handle { plugin, selection } => {
                         if let Some(&idx) = state.plugin_map.get(plugin.name.as_str()) {
                             let mut frecency = state.frecency.lock().await;
-                            frecency.usage
-                                .entry((plugin.name.to_string(), selection.title.to_string()))
-                                .or_default()
-                                .push(Utc::now());
-                            frecency.cleanup();
+                            frecency.record_selection(&plugin, &selection);
                             frecency.save(&state.config_dir);
 
                             let handle_fn = state.plugins[idx].plugin.handle_selection();
@@ -390,6 +502,10 @@ async fn worker(
                             .unwrap_or(HandleResult::Close);
                             socket.send(&Response::Handled { plugin, result }).await?;
                         }
+                    }
+                    Request::Recent { limit } => {
+                        let matches = state.frecency.lock().await.recent_matches(limit);
+                        socket.send(&Response::Recent { matches }).await?;
                     }
                     Request::Reset => {
                         stop_search_workers(&mut search_workers);
@@ -450,7 +566,7 @@ async fn worker(
                 stop_search_workers(&mut search_workers);
 
                 let mut failed = Vec::new();
-                for (_i, p) in state.plugins.iter_mut().enumerate() {
+                for p in state.plugins.iter_mut() {
                     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         p.plugin.init()(state.config_dir.as_ref().into());
                     }));
@@ -596,8 +712,14 @@ fn spawn_file_watcher(reload_tx: broadcast::Sender<()>, plugin_dirs: &[PathBuf],
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicBool;
+    use std::sync::{Mutex, OnceLock};
     use std::time::Duration;
     use tokio::time::timeout;
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+    }
 
     fn plugin_sample_library_path() -> Option<PathBuf> {
         let current_exe = std::env::current_exe().ok()?;
@@ -640,6 +762,7 @@ mod tests {
 
     #[test]
     fn test_resolve_desktop_dirs_includes_system_dirs_when_xdg_data_dirs_unset() {
+        let _guard = env_lock();
         let original = env::var("XDG_DATA_DIRS");
         unsafe { env::remove_var("XDG_DATA_DIRS") };
 
@@ -654,6 +777,7 @@ mod tests {
 
     #[test]
     fn test_resolve_desktop_dirs_parses_xdg_data_dirs() {
+        let _guard = env_lock();
         let original = env::var("XDG_DATA_DIRS");
         unsafe { env::set_var("XDG_DATA_DIRS", "/foo:/bar") };
 
@@ -693,6 +817,69 @@ mod tests {
         }));
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_frecency_records_recent_selection() {
+        use abi_stable::std_types::ROption;
+
+        let plugin = PluginInfo {
+            name: "Applications".into(),
+            icon: "system-search".into(),
+        };
+        let selection = Match {
+            title: "Firefox".into(),
+            description: ROption::RNone,
+            use_pango: false,
+            icon: ROption::RNone,
+            id: ROption::RNone,
+        };
+
+        let mut frecency = FrecencyData::default();
+        frecency.record_selection(&plugin, &selection);
+        frecency.record_selection(&plugin, &selection);
+
+        let recent = frecency.recent_matches(8);
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].plugin.name.as_str(), "Applications");
+        assert_eq!(recent[0].selection.title.as_str(), "Firefox");
+        assert_eq!(recent[0].uses, 2);
+    }
+
+    #[test]
+    fn test_rank_matches_boosts_exact_query() {
+        use abi_stable::std_types::{ROption, RString};
+
+        let plugin = "Applications";
+        let mut frecency = FrecencyData::default();
+        let matches = vec![
+            Match {
+                title: RString::from("Firefox Developer Edition"),
+                description: ROption::RNone,
+                use_pango: false,
+                icon: ROption::RNone,
+                id: ROption::RNone,
+            },
+            Match {
+                title: RString::from("Firefox"),
+                description: ROption::RNone,
+                use_pango: false,
+                icon: ROption::RNone,
+                id: ROption::RNone,
+            },
+        ];
+
+        let ranked = rank_matches(plugin, "firefox", matches.into(), &frecency);
+        assert_eq!(ranked[0].title.as_str(), "Firefox");
+
+        let plugin_info = PluginInfo {
+            name: plugin.into(),
+            icon: "system-search".into(),
+        };
+        frecency.record_selection(&plugin_info, &ranked[1]);
+        frecency.record_selection(&plugin_info, &ranked[1]);
+        let ranked = rank_matches(plugin, "fire", ranked, &frecency);
+        assert_eq!(ranked[0].title.as_str(), "Firefox Developer Edition");
     }
 
     #[test]
@@ -778,6 +965,8 @@ mod tests {
         let _ = query_tx.send(Some(QueuedQuery {
             query_id: 1,
             text: Arc::from("a"),
+            timeout_ms: 800,
+            slow_ms: 250,
         }));
 
         timeout(Duration::from_millis(200), async {
@@ -791,25 +980,29 @@ mod tests {
         let _ = query_tx.send(Some(QueuedQuery {
             query_id: 2,
             text: Arc::from("ab"),
+            timeout_ms: 800,
+            slow_ms: 250,
         }));
         let _ = query_tx.send(Some(QueuedQuery {
             query_id: 3,
             text: Arc::from("abc"),
+            timeout_ms: 800,
+            slow_ms: 250,
         }));
 
         let first = timeout(Duration::from_millis(500), result_rx.recv())
             .await
             .expect("first result should arrive")
             .expect("worker should send first result");
-        assert_eq!(first.1, 1);
-        assert_eq!(first.2[0].title.as_str(), "a");
+        assert_eq!(first.query_id, 1);
+        assert_eq!(first.matches[0].title.as_str(), "a");
 
         let second = timeout(Duration::from_millis(500), result_rx.recv())
             .await
             .expect("latest result should arrive")
             .expect("worker should send latest result");
-        assert_eq!(second.1, 3);
-        assert_eq!(second.2[0].title.as_str(), "abc");
+        assert_eq!(second.query_id, 3);
+        assert_eq!(second.matches[0].title.as_str(), "abc");
 
         assert!(
             timeout(Duration::from_millis(150), result_rx.recv())

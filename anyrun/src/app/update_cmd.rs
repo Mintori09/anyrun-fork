@@ -49,6 +49,8 @@ impl App {
                         text: widgets.entry().text().into(),
                         phase: QueryPhase::Settling,
                         plugins: Vec::new(),
+                        timeout_ms: self.config.search_ux.plugin_timeout_ms,
+                        slow_ms: self.config.search_ux.slow_plugin_ms,
                     });
                     if exclusive {
                         // With a flat list, clear matches when exclusive refresh is requested
@@ -81,6 +83,15 @@ impl App {
                     sender.input(AppMsg::Action(Action::Close));
                 }
             },
+            ipc::Response::Recent { matches } => {
+                self.show_recent_matches(matches, widgets, root);
+            }
+            ipc::Response::Health { statuses } => {
+                for status in statuses {
+                    self.plugin_health.insert(status.plugin.clone(), status);
+                }
+                self.sync_shortcuts(widgets);
+            }
         }
     }
 }

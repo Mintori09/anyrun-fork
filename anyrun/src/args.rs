@@ -19,4 +19,5 @@ pub enum Command {
     Close,
     Quit,
     Reload,
+    Doctor,
 }

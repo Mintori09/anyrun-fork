@@ -183,7 +183,7 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
     })
     .collect::<Vec<_>>();
 
-    vec.sort_by(|a, b| b.1.cmp(&a.1));
+    vec.sort_by_key(|b| std::cmp::Reverse(b.1));
 
     vec.truncate(state.config.max_entries);
 
