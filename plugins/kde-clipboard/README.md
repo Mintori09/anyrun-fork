@@ -32,5 +32,8 @@ Config(
 
   // Maximum number of entries to display
   max_entries: 10,
+
+  // Maximum characters shown in preview title (one-line, then "...")
+  preview_max_chars: 120,
 )
 ```
