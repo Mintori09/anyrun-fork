@@ -14,6 +14,7 @@ members = [
   "plugins/anyrun-applications",
   "plugins/anyrun-calc",
   "plugins/anyrun-findfiles",
+  "plugins/anyrun-git-projects",
   "plugins/anyrun-shell-wrapper",
   "plugins/anyrun-shell-wrapper-once",
   "plugins/anyrun-universal-action",

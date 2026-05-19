@@ -2,6 +2,8 @@ use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::*;
 use serde::Deserialize;
 use std::fs;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::RwLock;
 use std::time::{Duration, Instant};
 use zbus::blocking::Connection;
 use zbus::proxy;
@@ -26,6 +28,8 @@ struct Config {
     prefix: String,
     #[serde(default = "default_max_entries")]
     max_entries: usize,
+    #[serde(default = "default_preview_max_chars")]
+    preview_max_chars: usize,
 }
 
 fn default_prefix() -> String {
@@ -34,22 +38,26 @@ fn default_prefix() -> String {
 fn default_max_entries() -> usize {
     10
 }
+fn default_preview_max_chars() -> usize {
+    120
+}
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             prefix: default_prefix(),
             max_entries: default_max_entries(),
+            preview_max_chars: default_preview_max_chars(),
         }
     }
 }
-
-use std::sync::RwLock;
 
 pub struct State {
     config: Config,
     connection: Connection,
     cached_history: RwLock<(Instant, Vec<String>)>,
+    selection_map: RwLock<std::collections::HashMap<u64, String>>,
+    next_selection_id: AtomicU64,
 }
 
 #[init]
@@ -66,6 +74,8 @@ fn init(config_dir: RString) -> State {
         config,
         connection,
         cached_history,
+        selection_map: RwLock::new(std::collections::HashMap::new()),
+        next_selection_id: AtomicU64::new(1),
     }
 }
 
@@ -75,6 +85,30 @@ fn info() -> PluginInfo {
         name: "KDE Klipper".into(),
         icon: "klipper".into(),
     }
+}
+
+fn format_preview(raw: &str, max_chars: usize) -> String {
+    let normalized = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    if max_chars == 0 {
+        return "...".into();
+    }
+
+    let mut preview = String::new();
+    let mut count = 0usize;
+    for ch in normalized.chars() {
+        if count >= max_chars {
+            break;
+        }
+        preview.push(ch);
+        count += 1;
+    }
+
+    if normalized.chars().count() > max_chars {
+        preview.push_str("...");
+    }
+
+    preview
 }
 
 #[get_matches]
@@ -132,30 +166,76 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
         results.sort_unstable_by_key(|b| std::cmp::Reverse(b.0));
     }
 
-    results
+    let mut selection_pairs = Vec::new();
+    let matches = results
         .into_iter()
         .take(state.config.max_entries)
-        .map(|(_, text)| Match {
-            title: text.into(),
-            description: ROption::RSome("Copy to clipboard".into()),
-            use_pango: false,
-            icon: ROption::RSome("edit-copy".into()),
-            id: ROption::RNone,
+        .map(|(_, text)| {
+            let id = state.next_selection_id.fetch_add(1, Ordering::Relaxed);
+            let preview = format_preview(&text, state.config.preview_max_chars);
+            selection_pairs.push((id, text));
+
+            Match {
+                title: preview.into(),
+                description: ROption::RSome("Copy to clipboard".into()),
+                use_pango: false,
+                icon: ROption::RSome("edit-copy".into()),
+                id: ROption::RSome(id),
+            }
         })
-        .collect::<Vec<_>>()
-        .into()
+        .collect::<Vec<_>>();
+
+    {
+        let mut map = state.selection_map.write().unwrap();
+        map.clear();
+        map.extend(selection_pairs);
+    }
+
+    matches.into()
 }
 
 #[handler]
-fn handler(selection: Match, _state: &State) -> HandleResult {
-    let result = selection.title;
+fn handler(selection: Match, state: &State) -> HandleResult {
+    let result = match selection.id {
+        ROption::RSome(id) => state
+            .selection_map
+            .read()
+            .unwrap()
+            .get(&id)
+            .cloned()
+            .unwrap_or_else(|| selection.title.to_string()),
+        ROption::RNone => selection.title.to_string(),
+    };
 
     if let Err(why) = std::process::Command::new("wl-copy")
-        .arg(result.as_str())
+        .arg(result)
         .spawn()
     {
         eprintln!("[libklipper] Failed to copy: {}", why);
     }
 
     HandleResult::Close
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_preview;
+
+    #[test]
+    fn keeps_short_single_line() {
+        assert_eq!(format_preview("hello world", 120), "hello world");
+    }
+
+    #[test]
+    fn truncates_long_single_line() {
+        assert_eq!(format_preview("abcdefghijklmnopqrstuvwxyz", 10), "abcdefghij...");
+    }
+
+    #[test]
+    fn collapses_multiline_then_truncates() {
+        assert_eq!(
+            format_preview("line1\nline2\t line3", 10),
+            "line1 line..."
+        );
+    }
 }
