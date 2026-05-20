@@ -56,6 +56,10 @@ struct FrecencyData {
 }
 
 impl FrecencyData {
+    fn selection_safe_for_recent(selection: &Match) -> bool {
+        matches!(selection.id, abi_stable::std_types::ROption::RNone)
+    }
+
     pub fn load(config_dir: &str) -> Self {
         let path = PathBuf::from(config_dir).join("frecency.json");
         fs::read_to_string(path)
@@ -79,8 +83,11 @@ impl FrecencyData {
         }
         self.usage.retain(|_, usages| !usages.is_empty());
         let min_unix = (now - max_age).timestamp();
-        self.recent
-            .retain(|entry| entry.last_used_unix >= min_unix && entry.uses > 0);
+        self.recent.retain(|entry| {
+            entry.last_used_unix >= min_unix
+                && entry.uses > 0
+                && Self::selection_safe_for_recent(&entry.selection)
+        });
         self.recent
             .sort_by_key(|entry| std::cmp::Reverse(entry.last_used_unix));
     }
@@ -109,21 +116,23 @@ impl FrecencyData {
             .or_default()
             .push(now);
 
-        let plugin_name = plugin.name.as_str();
-        let title = selection.title.as_str();
-        if let Some(existing) = self.recent.iter_mut().find(|entry| {
-            entry.plugin.name.as_str() == plugin_name && entry.selection.title.as_str() == title
-        }) {
-            existing.selection = selection.clone();
-            existing.last_used_unix = now.timestamp();
-            existing.uses = existing.uses.saturating_add(1);
-        } else {
-            self.recent.push(RecentMatch {
-                plugin: plugin.clone(),
-                selection: selection.clone(),
-                last_used_unix: now.timestamp(),
-                uses: 1,
-            });
+        if Self::selection_safe_for_recent(selection) {
+            let plugin_name = plugin.name.as_str();
+            let title = selection.title.as_str();
+            if let Some(existing) = self.recent.iter_mut().find(|entry| {
+                entry.plugin.name.as_str() == plugin_name && entry.selection.title.as_str() == title
+            }) {
+                existing.selection = selection.clone();
+                existing.last_used_unix = now.timestamp();
+                existing.uses = existing.uses.saturating_add(1);
+            } else {
+                self.recent.push(RecentMatch {
+                    plugin: plugin.clone(),
+                    selection: selection.clone(),
+                    last_used_unix: now.timestamp(),
+                    uses: 1,
+                });
+            }
         }
         self.cleanup();
     }
@@ -232,31 +241,35 @@ fn spawn_query_worker(
             let slow_ms = query.slow_ms;
             let search_fn = Arc::clone(&search_fn);
             let started = Instant::now();
+            let blocking_task = tokio::task::spawn_blocking(move || search_fn(query_text.clone()));
+            tokio::pin!(blocking_task);
 
-            match tokio::time::timeout(
-                Duration::from_millis(timeout_ms),
-                tokio::task::spawn_blocking(move || search_fn(query_text.clone())),
-            )
-            .await
-            {
-                Ok(Ok(matches)) => {
-                    let elapsed_ms = started.elapsed().as_millis() as u64;
-                    let _ = result_tx.send(PluginQueryResult {
-                        plugin_idx,
-                        query_id,
-                        query_text: query.text.clone(),
-                        matches,
-                        elapsed_ms,
-                        slow_ms,
-                        timed_out: false,
-                    });
+            let timed_out = tokio::time::sleep(Duration::from_millis(timeout_ms));
+            tokio::pin!(timed_out);
+
+            tokio::select! {
+                result = &mut blocking_task => {
+                    match result {
+                        Ok(matches) => {
+                            let elapsed_ms = started.elapsed().as_millis() as u64;
+                            let _ = result_tx.send(PluginQueryResult {
+                                plugin_idx,
+                                query_id,
+                                query_text: query.text.clone(),
+                                matches,
+                                elapsed_ms,
+                                slow_ms,
+                                timed_out: false,
+                            });
+                        }
+                        Err(err) => {
+                            eprintln!(
+                                "[provider] Search worker failed for plugin index {plugin_idx}: {err}"
+                            );
+                        }
+                    }
                 }
-                Ok(Err(err)) => {
-                    eprintln!(
-                        "[provider] Search worker failed for plugin index {plugin_idx}: {err}"
-                    );
-                }
-                Err(_) => {
+                _ = &mut timed_out => {
                     let elapsed_ms = started.elapsed().as_millis() as u64;
                     let _ = result_tx.send(PluginQueryResult {
                         plugin_idx,
@@ -267,6 +280,12 @@ fn spawn_query_worker(
                         slow_ms,
                         timed_out: true,
                     });
+
+                    if let Err(err) = blocking_task.await {
+                        eprintln!(
+                            "[provider] Timed-out search worker failed for plugin index {plugin_idx}: {err}"
+                        );
+                    }
                 }
             }
 
@@ -847,6 +866,54 @@ mod tests {
     }
 
     #[test]
+    fn test_frecency_skips_recent_when_selection_has_id() {
+        use abi_stable::std_types::ROption;
+
+        let plugin = PluginInfo {
+            name: "Applications".into(),
+            icon: "system-search".into(),
+        };
+        let selection = Match {
+            title: "Firefox".into(),
+            description: ROption::RNone,
+            use_pango: false,
+            icon: ROption::RNone,
+            id: ROption::RSome(42),
+        };
+
+        let mut frecency = FrecencyData::default();
+        frecency.record_selection(&plugin, &selection);
+
+        assert_eq!(frecency.recent_matches(8).len(), 0);
+        assert_eq!(frecency.usage.len(), 1);
+    }
+
+    #[test]
+    fn test_cleanup_drops_legacy_recent_entries_with_id() {
+        use abi_stable::std_types::ROption;
+
+        let mut frecency = FrecencyData::default();
+        frecency.recent.push(RecentMatch {
+            plugin: PluginInfo {
+                name: "Applications".into(),
+                icon: "system-search".into(),
+            },
+            selection: Match {
+                title: "Legacy".into(),
+                description: ROption::RNone,
+                use_pango: false,
+                icon: ROption::RNone,
+                id: ROption::RSome(7),
+            },
+            last_used_unix: Utc::now().timestamp(),
+            uses: 3,
+        });
+
+        frecency.cleanup();
+        assert!(frecency.recent.is_empty());
+    }
+
+    #[test]
     fn test_rank_matches_boosts_exact_query() {
         use abi_stable::std_types::{ROption, RString};
 
@@ -1010,6 +1077,91 @@ mod tests {
                 .is_err(),
             "intermediate query should be coalesced"
         );
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_spawn_query_worker_timeout_keeps_single_inflight() {
+        use abi_stable::std_types::{ROption, RString};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tokio::sync::mpsc;
+
+        let (result_tx, mut result_rx) = mpsc::unbounded_channel::<PluginQueryResult>();
+        let (query_tx, query_rx) = watch::channel(None);
+        let running = Arc::new(AtomicUsize::new(0));
+        let max_running = Arc::new(AtomicUsize::new(0));
+        let first_done = Arc::new(AtomicBool::new(false));
+
+        let running_ref = Arc::clone(&running);
+        let max_running_ref = Arc::clone(&max_running);
+        let first_done_ref = Arc::clone(&first_done);
+        let search_fn: SearchFn = Arc::new(move |query_text: Arc<str>| {
+            let in_flight = running_ref.fetch_add(1, Ordering::SeqCst) + 1;
+            max_running_ref.fetch_max(in_flight, Ordering::SeqCst);
+
+            let text = query_text.as_ref().to_string();
+            if text == "first" {
+                std::thread::sleep(Duration::from_millis(200));
+                first_done_ref.store(true, Ordering::SeqCst);
+            }
+
+            running_ref.fetch_sub(1, Ordering::SeqCst);
+            vec![Match {
+                title: RString::from(text),
+                description: ROption::RNone,
+                use_pango: false,
+                icon: ROption::RNone,
+                id: ROption::RNone,
+            }]
+            .into()
+        });
+
+        let handle = spawn_query_worker(0, query_rx, result_tx, search_fn);
+
+        let _ = query_tx.send(Some(QueuedQuery {
+            query_id: 1,
+            text: Arc::from("first"),
+            timeout_ms: 50,
+            slow_ms: 25,
+        }));
+
+        let timed_out = timeout(Duration::from_millis(200), result_rx.recv())
+            .await
+            .expect("timed out response should arrive")
+            .expect("worker should send timeout result");
+        assert_eq!(timed_out.query_id, 1);
+        assert!(timed_out.timed_out);
+
+        let _ = query_tx.send(Some(QueuedQuery {
+            query_id: 2,
+            text: Arc::from("second"),
+            timeout_ms: 500,
+            slow_ms: 250,
+        }));
+
+        assert!(
+            timeout(Duration::from_millis(100), result_rx.recv())
+                .await
+                .is_err(),
+            "second query should not complete while first blocking task is still running"
+        );
+
+        timeout(Duration::from_millis(300), async {
+            while !first_done.load(Ordering::SeqCst) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("first blocking query should finish");
+
+        let second = timeout(Duration::from_millis(300), result_rx.recv())
+            .await
+            .expect("second query result should arrive after first completes")
+            .expect("worker should send second result");
+        assert_eq!(second.query_id, 2);
+        assert_eq!(second.matches[0].title.as_str(), "second");
+        assert_eq!(max_running.load(Ordering::SeqCst), 1);
 
         handle.abort();
     }
