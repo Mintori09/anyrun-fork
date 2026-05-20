@@ -72,6 +72,7 @@ pub enum AppMsg {
         modifier: gdk::ModifierType,
     },
     Action(Action),
+    EntryActivated,
     EntryChanged(String),
     Activate(Option<SendInvocation>),
     SyncShortcuts,

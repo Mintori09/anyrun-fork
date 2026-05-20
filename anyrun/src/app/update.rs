@@ -1,5 +1,5 @@
 use super::{App, AppMsg, AppWidgets, PostRunAction, SendInvocation, DEFAULT_CSS};
-use crate::config::{Action, Config, Keybind};
+use crate::config::{Action, Config};
 use crate::plugin_box::{LocalAction, MatchSource, PluginMatchInput};
 use anyrun_provider_ipc as ipc;
 use anyrun_provider_ipc::QueryPhase;
@@ -72,13 +72,8 @@ impl App {
                     }
                 }
 
-                if let Some(Keybind { action, .. }) = self.config.keybinds.iter().find(|keybind| {
-                    keybind.key == key
-                        && keybind.ctrl == modifier.contains(gdk::ModifierType::CONTROL_MASK)
-                        && keybind.alt == modifier.contains(gdk::ModifierType::ALT_MASK)
-                        && keybind.shift == modifier.contains(gdk::ModifierType::SHIFT_MASK)
-                }) {
-                    sender.input(AppMsg::Action(*action));
+                if let Some(action) = self.resolve_action_for_key(key, modifier) {
+                    sender.input(AppMsg::Action(action));
                 }
             }
             AppMsg::Action(action) => {
@@ -344,6 +339,13 @@ impl App {
                             sender_clone.input(AppMsg::TriggerSettledQuery(epoch, text));
                         }
                     });
+                }
+            }
+            AppMsg::EntryActivated => {
+                if let Some(action) =
+                    self.resolve_action_for_key(gdk::Key::Return, gdk::ModifierType::empty())
+                {
+                    sender.input(AppMsg::Action(action));
                 }
             }
             AppMsg::SyncShortcuts => {
