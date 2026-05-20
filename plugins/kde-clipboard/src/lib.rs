@@ -2,8 +2,8 @@ use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::*;
 use serde::Deserialize;
 use std::fs;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use zbus::blocking::Connection;
 use zbus::proxy;
@@ -207,10 +207,7 @@ fn handler(selection: Match, state: &State) -> HandleResult {
         ROption::RNone => selection.title.to_string(),
     };
 
-    if let Err(why) = std::process::Command::new("wl-copy")
-        .arg(result)
-        .spawn()
-    {
+    if let Err(why) = std::process::Command::new("wl-copy").arg(result).spawn() {
         eprintln!("[libklipper] Failed to copy: {}", why);
     }
 
@@ -228,14 +225,14 @@ mod tests {
 
     #[test]
     fn truncates_long_single_line() {
-        assert_eq!(format_preview("abcdefghijklmnopqrstuvwxyz", 10), "abcdefghij...");
+        assert_eq!(
+            format_preview("abcdefghijklmnopqrstuvwxyz", 10),
+            "abcdefghij..."
+        );
     }
 
     #[test]
     fn collapses_multiline_then_truncates() {
-        assert_eq!(
-            format_preview("line1\nline2\t line3", 10),
-            "line1 line..."
-        );
+        assert_eq!(format_preview("line1\nline2\t line3", 10), "line1 line...");
     }
 }
