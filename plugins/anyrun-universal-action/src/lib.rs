@@ -10,7 +10,7 @@ use notify_rust::Notification;
 use serde::Deserialize;
 use std::fs::{self};
 use std::path::PathBuf;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use which::which;
 
 use crate::action::model::{ActionTarget, InputCategory, UniversalAction};
@@ -41,10 +41,10 @@ fn default_max_entries() -> usize {
 
 pub struct State {
     has_magika: bool,
-    filetype: RwLock<InputCategory>,
+    filetype: Arc<RwLock<InputCategory>>,
     config: Config,
     actions: Vec<UniversalAction>,
-    clipboard: RwLock<String>,
+    clipboard: Arc<RwLock<String>>,
 }
 
 #[init]
@@ -75,12 +75,44 @@ fn init(config_dir: RString) -> State {
 
     actions.extend(config_actions);
 
-    let (filetype, clipboard) = InputCategory::classify_clipboard();
+    let filetype = Arc::new(RwLock::new(InputCategory::PlainText));
+    let clipboard = Arc::new(RwLock::new(String::new()));
+
+    let ft_clone = filetype.clone();
+    let cb_clone = clipboard.clone();
+    std::thread::spawn(move || {
+        let mut ctx = match arboard::Clipboard::new() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[universal-action] Failed to initialize clipboard: {:?}", e);
+                return;
+            }
+        };
+        let mut last_clip = String::new();
+        let mut last_is_image = false;
+        loop {
+            if let Ok(text) = ctx.get_text() {
+                if text != last_clip || last_is_image {
+                    let cat = InputCategory::classify_text(&text);
+                    *ft_clone.write().unwrap() = cat;
+                    *cb_clone.write().unwrap() = text.clone();
+                    last_clip = text;
+                    last_is_image = false;
+                }
+            } else if !last_is_image && ctx.get_image().is_ok() {
+                *ft_clone.write().unwrap() = InputCategory::Image;
+                *cb_clone.write().unwrap() = String::new();
+                last_clip = String::new();
+                last_is_image = true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    });
 
     State {
         has_magika: which("magika").is_ok(),
-        filetype: RwLock::new(filetype),
-        clipboard: RwLock::new(clipboard),
+        filetype,
+        clipboard,
         config,
         actions,
     }
@@ -113,10 +145,6 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
     };
 
     let is_initial_view = query.is_empty();
-
-    let (new_filetype, new_clipboard) = InputCategory::classify_clipboard();
-    *state.filetype.write().unwrap() = new_filetype;
-    *state.clipboard.write().unwrap() = new_clipboard;
 
     let limit = if is_initial_view {
         10
@@ -235,11 +263,12 @@ fn test_read_config() {
 
     actions.extend(config_actions);
 
-    let (filetype, clipboard) = InputCategory::classify_clipboard();
+    let filetype = Arc::new(RwLock::new(InputCategory::PlainText));
+    let clipboard = Arc::new(RwLock::new(String::new()));
     let state = State {
         has_magika: which("magika").is_ok(),
-        filetype: RwLock::new(filetype),
-        clipboard: RwLock::new(clipboard),
+        filetype,
+        clipboard,
         config,
         actions,
     };
