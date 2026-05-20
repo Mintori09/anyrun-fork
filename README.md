@@ -142,6 +142,7 @@ Key options:
 - `plugins`: Ordered list of plugin `.so` files (order = priority)
 - `provider`: Path to `anyrun-provider` binary
 - `keybinds`: Custom key binding actions (Select, OpenActions, Up, Down, Close)
+  - Enter aliases are treated the same for matching: `Return`, `KP_Enter`, `ISO_Enter`
 - `search_ux`: Search UX tuning (settle/flush delays, plugin timeout/health, prefix discovery, empty recent state)
 
 ### Styling

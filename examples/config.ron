@@ -49,6 +49,7 @@ Config(
   ],
 
   keybinds: [
+    // Enter aliases are treated equally when matching: Return, KP_Enter, ISO_Enter
     Keybind(
       key: "Return",
       action: Select, 

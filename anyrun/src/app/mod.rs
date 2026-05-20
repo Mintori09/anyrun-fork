@@ -98,6 +98,9 @@ impl Component for App {
                 gtk::Entry {
                     set_hexpand: true,
                     set_activates_default: false,
+                    connect_activate[sender] => move |_| {
+                        sender.input(AppMsg::EntryActivated);
+                    },
                     connect_changed[sender] => move |entry| {
                         sender.input(AppMsg::EntryChanged(entry.text().into()));
                     },

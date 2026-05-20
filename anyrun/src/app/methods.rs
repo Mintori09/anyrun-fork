@@ -1,14 +1,27 @@
 use super::{App, AppInit, AppWidgets, DaemonContext, SendInvocation};
-use crate::config::{PrefixRoute, TypingVisual};
+use crate::config::{Action, PrefixRoute, TypingVisual};
 use crate::plugin_box::{LocalAction, MatchSource, PluginMatchInput};
 use abi_stable::std_types::ROption;
 use anyrun_interface::{Match, PluginInfo};
+use gtk::gdk;
 use gtk::prelude::*;
 use gtk4 as gtk;
 use relm4::{ComponentBuilder, ComponentController};
 use std::collections::HashSet;
 
 impl App {
+    pub(super) fn resolve_action_for_key(
+        &self,
+        key: gdk::Key,
+        modifier: gdk::ModifierType,
+    ) -> Option<Action> {
+        self.config
+            .keybinds
+            .iter()
+            .find(|keybind| keybind.matches(key, modifier))
+            .map(|keybind| keybind.action)
+    }
+
     pub fn launch(
         app: &gtk::Application,
         app_init: AppInit,
