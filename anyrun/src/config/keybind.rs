@@ -58,7 +58,10 @@ impl Keybind {
 }
 
 pub fn is_enter_key(key: gdk::Key) -> bool {
-    matches!(key, gdk::Key::Return | gdk::Key::KP_Enter | gdk::Key::ISO_Enter)
+    matches!(
+        key,
+        gdk::Key::Return | gdk::Key::KP_Enter | gdk::Key::ISO_Enter
+    )
 }
 
 pub fn key_matches(binding_key: gdk::Key, event_key: gdk::Key) -> bool {

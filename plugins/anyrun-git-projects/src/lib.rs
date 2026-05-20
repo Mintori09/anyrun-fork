@@ -190,7 +190,10 @@ mod tests {
     #[test]
     fn escape_path_with_spaces() {
         let path = "/home/mintori/My Projects/repo";
-        assert_eq!(shell_escape_single_arg(path), "'/home/mintori/My Projects/repo'");
+        assert_eq!(
+            shell_escape_single_arg(path),
+            "'/home/mintori/My Projects/repo'"
+        );
     }
 
     #[test]
