@@ -284,6 +284,8 @@ impl App {
                     if let Some(cancellable) = self.search_cancellable.take() {
                         cancellable.cancel();
                     }
+                    self.matches.guard().clear();
+                    self.finish_local_rows(widgets, root);
                     self.request_empty_state();
                     return;
                 }
