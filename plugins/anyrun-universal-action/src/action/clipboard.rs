@@ -1,5 +1,4 @@
 use anyrun_helper::icon::{SystemIcon, home_dir};
-use arboard::Clipboard;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::env;
@@ -18,24 +17,6 @@ static IPV6_RE: Lazy<Regex> =
 static URL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(https?|ftp|file)://").unwrap());
 
 impl InputCategory {
-    pub fn classify_clipboard() -> (InputCategory, String) {
-        let mut ctx = match Clipboard::new() {
-            Ok(c) => c,
-            Err(_) => return (InputCategory::PlainText, String::new()),
-        };
-
-        if ctx.get_image().is_ok() {
-            return (InputCategory::Image, String::new());
-        }
-
-        let text = match ctx.get_text() {
-            Ok(t) => t,
-            Err(_) => return (InputCategory::PlainText, String::new()),
-        };
-
-        (Self::classify_text(&text), text)
-    }
-
     pub fn classify_text(text: &str) -> InputCategory {
         let trimmed = text.trim();
         if trimmed.is_empty() {
