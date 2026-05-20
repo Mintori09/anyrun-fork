@@ -3,5 +3,22 @@ Config(
     max_entries: 10,
     show_results_immediately: true,
     cache_ttl_hours: 0,
-    shell: "zsh",
+    default_command: Some("kitty --directory {path}"),
+    commands: {
+        "nvim": (
+            command: "nvim {path}",
+            icon: "nvim",
+            terminal: true,
+        ),
+        "code": (
+            command: "code {path}",
+            icon: "visual-studio-code",
+            terminal: false,
+        ),
+        "op": (
+            command: "opencode {path}",
+            icon: "system-search",
+            terminal: false,
+        ),
+    },
 )
