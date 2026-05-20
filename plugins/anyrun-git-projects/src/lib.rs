@@ -42,7 +42,7 @@ fn load_cache(config_dir: &str, config: &Config) -> Option<Vec<(String, String)>
     let modified = meta.modified().ok()?;
     let elapsed = modified.elapsed().ok()?;
 
-    if elapsed >= Duration::from_secs(config.cache_ttl_hours * 3600) {
+    if elapsed >= Duration::from_secs(config.cache_ttl_hours.saturating_mul(3600)) {
         return None;
     }
 
@@ -152,8 +152,59 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
 #[handler]
 fn handler(selection: Match, state: &State) -> HandleResult {
     let path = selection.description.unwrap_or_default().to_string();
-    if !path.is_empty() {
-        anyrun_helper::terminal::launch(&format!("cd {} && exec {}", path, state.config.shell));
+    if path.is_empty() {
+        return HandleResult::Close;
     }
+
+    let escaped_path = shell_escape_single_arg(&path);
+    anyrun_helper::terminal::launch(&format!(
+        "cd -- {} && exec {}",
+        escaped_path, state.config.shell
+    ));
     HandleResult::Close
+}
+
+fn shell_escape_single_arg(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+
+    let mut escaped = String::from("'");
+
+    for ch in value.chars() {
+        if ch == '\'' {
+            escaped.push_str("'\\''");
+        } else {
+            escaped.push(ch);
+        }
+    }
+
+    escaped.push('\'');
+    escaped
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escape_path_with_spaces() {
+        let path = "/home/mintori/My Projects/repo";
+        assert_eq!(shell_escape_single_arg(path), "'/home/mintori/My Projects/repo'");
+    }
+
+    #[test]
+    fn escape_path_with_single_quote() {
+        let path = "/home/mintori/O'Hara/repo";
+        assert_eq!(
+            shell_escape_single_arg(path),
+            "'/home/mintori/O'\\''Hara/repo'"
+        );
+    }
+
+    #[test]
+    fn cache_ttl_duration_uses_saturating_mul() {
+        let secs = u64::MAX.saturating_mul(3600);
+        assert_eq!(secs, u64::MAX);
+    }
 }
