@@ -84,15 +84,7 @@ impl App {
                 }
             },
             ipc::Response::Recent { matches } => {
-                if matches.is_empty() && self.current_input.trim().is_empty() {
-                    let _ = self.tx.try_send(ipc::Request::Query {
-                        text: String::new(),
-                        phase: QueryPhase::Settling,
-                        plugins: Vec::new(),
-                        timeout_ms: self.config.search_ux.plugin_timeout_ms,
-                        slow_ms: self.config.search_ux.slow_plugin_ms,
-                    });
-                } else {
+                if !matches.is_empty() {
                     self.show_recent_matches(matches, widgets, root);
                 }
             }

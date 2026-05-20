@@ -239,11 +239,13 @@ impl App {
     }
 
     pub(super) fn request_empty_state(&self) {
-        if self.config.search_ux.empty_state.enabled {
-            let _ = self.tx.try_send(anyrun_provider_ipc::Request::Recent {
-                limit: self.config.search_ux.empty_state.recent_limit,
-            });
-        }
+        let _ = self.tx.try_send(anyrun_provider_ipc::Request::Query {
+            text: String::new(),
+            phase: anyrun_provider_ipc::QueryPhase::Settling,
+            plugins: Vec::new(),
+            timeout_ms: self.config.search_ux.plugin_timeout_ms,
+            slow_ms: self.config.search_ux.slow_plugin_ms,
+        });
     }
 
     pub(super) fn show_prefix_discovery(&mut self, widgets: &mut AppWidgets, root: &gtk::Window) {
