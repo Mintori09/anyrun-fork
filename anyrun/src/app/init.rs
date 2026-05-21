@@ -174,10 +174,6 @@ impl App {
             plugin_health: std::collections::HashMap::new(),
         };
 
-        if model.is_daemon {
-            let _ = model.tx.try_send(ipc::Request::Reset);
-        }
-
         (model, config, config_dir, css_provider, matches_list)
     }
 }

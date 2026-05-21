@@ -21,6 +21,7 @@ impl App {
             ipc::Response::Ready { info } => {
                 self.plugin_names.clear();
                 self.plugin_info_map.clear();
+                self.plugin_health.clear();
                 for info in info {
                     self.plugin_names.push(info.name.to_string());
                     self.plugin_info_map.insert(info.name.to_string(), info);

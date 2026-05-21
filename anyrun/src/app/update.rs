@@ -226,6 +226,7 @@ impl App {
                         self.pending_matches.clear();
                         self.pending_flush_scheduled = false;
                         self.batch_flushing_results = false;
+                        self.plugin_health.clear();
                         self.selected_index = 0;
 
                         // 4. Reload plugins with new config
@@ -258,6 +259,7 @@ impl App {
             }
             AppMsg::EntryChanged(text) => {
                 self.selected_index = 0;
+                self.plugin_health.clear();
                 widgets.scroll().vadjustment().set_value(0.0);
                 widgets.matches_list().unselect_all();
                 self.last_scroll_top = 0.0;
@@ -371,6 +373,7 @@ impl App {
                 self.handle_activate(widgets, invocation, sender, root);
             }
             AppMsg::ReloadPlugins => {
+                self.plugin_health.clear();
                 let _ = self.tx.try_send(ipc::Request::ReloadPlugins);
             }
             AppMsg::FlushPendingMatches(epoch) => {
