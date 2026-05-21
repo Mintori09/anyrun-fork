@@ -94,17 +94,9 @@ fn format_preview(raw: &str, max_chars: usize) -> String {
         return "...".into();
     }
 
-    let mut preview = String::new();
-    let mut count = 0usize;
-    for ch in normalized.chars() {
-        if count >= max_chars {
-            break;
-        }
-        preview.push(ch);
-        count += 1;
-    }
+    let mut preview: String = normalized.chars().take(max_chars).collect();
 
-    if normalized.chars().count() > max_chars {
+    if normalized.chars().take(max_chars + 1).count() > max_chars {
         preview.push_str("...");
     }
 
