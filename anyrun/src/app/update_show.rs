@@ -75,6 +75,7 @@ impl App {
     ) {
         self.invocation = invocation;
         self.post_run_action = PostRunAction::None;
+        self.plugin_health.clear();
         widgets.entry().set_text("");
         widgets.entry().set_placeholder_text(Some("Search"));
         widgets.results_count().set_label("0 results");
