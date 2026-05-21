@@ -281,10 +281,24 @@ fn spawn_query_worker(
                         timed_out: true,
                     });
 
-                    if let Err(err) = blocking_task.await {
-                        eprintln!(
-                            "[provider] Timed-out search worker failed for plugin index {plugin_idx}: {err}"
-                        );
+                    match blocking_task.await {
+                        Ok(matches) => {
+                            let elapsed_ms = started.elapsed().as_millis() as u64;
+                            let _ = result_tx.send(PluginQueryResult {
+                                plugin_idx,
+                                query_id,
+                                query_text: query.text.clone(),
+                                matches,
+                                elapsed_ms,
+                                slow_ms,
+                                timed_out: false,
+                            });
+                        }
+                        Err(err) => {
+                            eprintln!(
+                                "[provider] Timed-out search worker failed for plugin index {plugin_idx}: {err}"
+                            );
+                        }
                     }
                 }
             }
@@ -320,6 +334,20 @@ fn stop_search_workers(workers: &mut Vec<PluginSearchWorker>) {
         worker.handle.abort();
         drop(worker.query_tx);
     }
+}
+
+fn plugin_health_state(result: &PluginQueryResult) -> Option<PluginHealthState> {
+    if result.query_text.trim().is_empty() {
+        return None;
+    }
+
+    Some(if result.timed_out {
+        PluginHealthState::TimedOut
+    } else if result.elapsed_ms >= result.slow_ms {
+        PluginHealthState::Slow
+    } else {
+        PluginHealthState::Healthy
+    })
 }
 
 #[tokio::main]
@@ -430,20 +458,15 @@ async fn worker(
 
                 if let Some(p_state) = state.plugins.get(result.plugin_idx) {
                     let plugin_name = p_state.info.name.as_str();
-                    let health_state = if result.timed_out {
-                        PluginHealthState::TimedOut
-                    } else if result.elapsed_ms >= result.slow_ms {
-                        PluginHealthState::Slow
-                    } else {
-                        PluginHealthState::Healthy
-                    };
-                    socket.send(&Response::Health {
-                        statuses: vec![PluginHealth {
-                            plugin: plugin_name.to_string(),
-                            state: health_state,
-                            elapsed_ms: result.elapsed_ms,
-                        }],
-                    }).await?;
+                    if let Some(health_state) = plugin_health_state(&result) {
+                        socket.send(&Response::Health {
+                            statuses: vec![PluginHealth {
+                                plugin: plugin_name.to_string(),
+                                state: health_state,
+                                elapsed_ms: result.elapsed_ms,
+                            }],
+                        }).await?;
+                    }
 
                     if result.timed_out {
                         socket.send(&Response::Matches {
@@ -1144,7 +1167,7 @@ mod tests {
             timeout(Duration::from_millis(100), result_rx.recv())
                 .await
                 .is_err(),
-            "second query should not complete while first blocking task is still running"
+            "no real matches should arrive while first blocking task is still running"
         );
 
         timeout(Duration::from_millis(300), async {
@@ -1154,6 +1177,14 @@ mod tests {
         })
         .await
         .expect("first blocking query should finish");
+
+        let late_first = timeout(Duration::from_millis(300), result_rx.recv())
+            .await
+            .expect("late first query result should arrive after first completes")
+            .expect("worker should send late first result");
+        assert_eq!(late_first.query_id, 1);
+        assert!(!late_first.timed_out);
+        assert_eq!(late_first.matches[0].title.as_str(), "first");
 
         let second = timeout(Duration::from_millis(300), result_rx.recv())
             .await
