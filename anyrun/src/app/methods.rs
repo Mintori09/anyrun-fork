@@ -9,6 +9,14 @@ use gtk4 as gtk;
 use relm4::{ComponentBuilder, ComponentController};
 use std::collections::HashSet;
 
+fn plugin_health_counts_as_issue(
+    current_input: &str,
+    status: &anyrun_provider_ipc::PluginHealth,
+) -> bool {
+    !current_input.trim().is_empty()
+        && status.state != anyrun_provider_ipc::PluginHealthState::Healthy
+}
+
 impl App {
     pub(super) fn resolve_action_for_key(
         &self,
@@ -77,7 +85,7 @@ impl App {
         let health_issues = self
             .plugin_health
             .values()
-            .filter(|status| status.state != anyrun_provider_ipc::PluginHealthState::Healthy)
+            .filter(|status| plugin_health_counts_as_issue(&self.current_input, status))
             .count();
         if health_issues == 0 {
             widgets
@@ -363,5 +371,47 @@ impl App {
         self.clear_pending_visual_state(widgets);
         self.sync_ui_selection(widgets);
         self.sync_shortcuts(widgets);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyrun_provider_ipc::{PluginHealth, PluginHealthState};
+
+    fn health(state: PluginHealthState) -> PluginHealth {
+        PluginHealth {
+            plugin: "Applications".to_string(),
+            state,
+            elapsed_ms: 900,
+        }
+    }
+
+    #[test]
+    fn empty_input_health_does_not_count_as_issue() {
+        assert!(!plugin_health_counts_as_issue(
+            "",
+            &health(PluginHealthState::TimedOut)
+        ));
+        assert!(!plugin_health_counts_as_issue(
+            "   ",
+            &health(PluginHealthState::Slow)
+        ));
+    }
+
+    #[test]
+    fn non_empty_unhealthy_status_counts_as_issue() {
+        assert!(plugin_health_counts_as_issue(
+            "firefox",
+            &health(PluginHealthState::TimedOut)
+        ));
+        assert!(plugin_health_counts_as_issue(
+            "firefox",
+            &health(PluginHealthState::Slow)
+        ));
+        assert!(!plugin_health_counts_as_issue(
+            "firefox",
+            &health(PluginHealthState::Healthy)
+        ));
     }
 }
