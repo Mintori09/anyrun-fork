@@ -27,6 +27,7 @@ jobs:
             libgtk-4-dev libadwaita-1-dev \
             libdbus-1-dev \
             libnotify-dev \
+            libgirepository1.0-dev \
             meson ninja-build valac
 
       - name: Install gtk4-layer-shell
@@ -37,19 +38,19 @@ jobs:
           ninja -C build
           sudo ninja -C build install
 
-      - name: Build anyrun
-        run: cargo build --release -p anyrun --verbose
+      - name: Build binaries
+        run: cargo build --release -p anyrun -p anyrun-provider --verbose
 
-      - name: Build anyrun-provider
-        run: cargo build --release -p anyrun-provider --verbose
+      - name: Stage release artifacts
+        run: |
+          mkdir -p dist
+          cp target/release/anyrun target/release/anyrun-provider dist/
 
       - uses: actions/upload-artifact@v4
         name: Upload binaries
         with:
           name: anyrun-release
-          path: |
-            target/release/anyrun
-            target/release/anyrun-provider
+          path: dist/
           retention-days: 7
 
   release:
