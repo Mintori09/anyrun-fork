@@ -1,9 +1,10 @@
 use std::{
     env, fs,
     io::{self, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::Arc,
+    time::{Duration, Instant},
 };
 
 use anyrun_provider_ipc as ipc;
@@ -90,20 +91,52 @@ pub fn worker_connect(
         .build()
         .unwrap()
         .block_on(async {
-            let mut attempts = 0;
-            let stream = loop {
-                match tokio::net::UnixStream::connect(&socket_path).await {
-                    Ok(stream) => break stream,
-                    Err(_e) if attempts < 10 => {
-                        attempts += 1;
-                        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-                    }
-                    Err(e) => return Err(e),
-                }
-            };
+            let stream = connect_with_retry(
+                &socket_path,
+                Duration::from_secs(12),
+                Duration::from_millis(100),
+            )
+            .await?;
             let mut socket = ipc::Socket::new(stream);
             relay_loop(&mut socket, &mut rx, &sender).await
         })
+}
+
+async fn connect_with_retry(
+    socket_path: &Path,
+    timeout: Duration,
+    interval: Duration,
+) -> io::Result<tokio::net::UnixStream> {
+    let started = Instant::now();
+    let mut last_error = None;
+
+    while started.elapsed() < timeout {
+        match tokio::net::UnixStream::connect(socket_path).await {
+            Ok(stream) => return Ok(stream),
+            Err(err)
+                if matches!(
+                    err.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+                ) =>
+            {
+                last_error = Some(err);
+                tokio::time::sleep(interval).await;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+
+    let cause = last_error
+        .map(|e| e.to_string())
+        .unwrap_or_else(|| "timeout".to_string());
+    Err(io::Error::new(
+        io::ErrorKind::TimedOut,
+        format!(
+            "failed to connect to IPC socket `{}` within {:?}: {cause}",
+            socket_path.display(),
+            timeout
+        ),
+    ))
 }
 
 async fn relay_loop(
@@ -133,4 +166,59 @@ async fn relay_loop(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::connect_with_retry;
+    use std::io;
+    use std::path::PathBuf;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use tokio::net::UnixListener;
+
+    fn test_socket_path(name: &str) -> PathBuf {
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("anyrun-{name}-{ts}.sock"))
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn connect_with_retry_succeeds_when_socket_appears_later() {
+        let socket_path = test_socket_path("delayed-connect");
+        let path_for_server = socket_path.clone();
+
+        let server = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            let _ = std::fs::remove_file(&path_for_server);
+            let listener = UnixListener::bind(&path_for_server).unwrap();
+            let _ = listener.accept().await;
+        });
+
+        let stream = connect_with_retry(
+            &socket_path,
+            Duration::from_secs(2),
+            Duration::from_millis(50),
+        )
+        .await
+        .expect("socket should become available");
+        drop(stream);
+        let _ = server.await;
+        let _ = std::fs::remove_file(socket_path);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn connect_with_retry_times_out_for_missing_socket() {
+        let socket_path = test_socket_path("missing-socket");
+        let err = connect_with_retry(
+            &socket_path,
+            Duration::from_millis(250),
+            Duration::from_millis(50),
+        )
+        .await
+        .expect_err("missing socket should time out");
+
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    }
 }
