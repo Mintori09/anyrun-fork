@@ -173,10 +173,8 @@ pub fn init(_attr: TokenStream, item: TokenStream) -> TokenStream {
         fn anyrun_internal_init(config_dir: ::abi_stable::std_types::RString) {
             #function
 
-            ::std::thread::spawn(|| {
-                let mut lock = ANYRUN_INTERNAL_DATA.write().unwrap();
-                *lock = ::core::option::Option::Some(#fn_name(config_dir));
-            });
+            let mut lock = ANYRUN_INTERNAL_DATA.write().unwrap();
+            *lock = ::core::option::Option::Some(#fn_name(config_dir));
         }
     }
     .into()
