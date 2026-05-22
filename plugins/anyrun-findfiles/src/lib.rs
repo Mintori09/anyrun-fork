@@ -5,9 +5,6 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::OnceLock;
-
-static CONFIG_STORE: OnceLock<Config> = OnceLock::new();
 
 const DEFAULT_OPEN_COMMAND: &str = "xdg-open {}";
 const GLOBAL_SCOPE_ID: u64 = u64::MAX;
@@ -159,9 +156,7 @@ impl<'a> SearchEngine<'a> {
 #[init]
 fn init(config_dir: RString) -> Config {
     let config_path = PathBuf::from(config_dir.to_string()).join(CONFIG_FILE_NAME);
-    let config = load_config(config_path);
-    let _ = CONFIG_STORE.set(config.clone());
-    config
+    load_config(config_path)
 }
 
 fn load_config(path: PathBuf) -> Config {
@@ -209,13 +204,13 @@ fn get_matches(input: RString, config: &Config) -> RVec<Match> {
 }
 
 #[handler]
-fn handler(selection: Match) -> HandleResult {
+fn handler(selection: Match, config: &Config) -> HandleResult {
     let entry_path = match selection.description {
         ROption::RSome(path) => path,
         ROption::RNone => return HandleResult::Close,
     };
 
-    let template = get_execution_template(selection.id);
+    let template = get_execution_template(selection.id, config);
     let command_string = template.replace("{}", &entry_path);
 
     let _ = Command::new("sh").arg("-c").arg(command_string).spawn();
@@ -223,12 +218,7 @@ fn handler(selection: Match) -> HandleResult {
     HandleResult::Close
 }
 
-fn get_execution_template(scope_id: ROption<u64>) -> String {
-    let config = match CONFIG_STORE.get() {
-        Some(cfg) => cfg,
-        None => return DEFAULT_OPEN_COMMAND.to_string(),
-    };
-
+fn get_execution_template(scope_id: ROption<u64>, config: &Config) -> String {
     match scope_id {
         ROption::RSome(id) if id != GLOBAL_SCOPE_ID => config
             .scopes
