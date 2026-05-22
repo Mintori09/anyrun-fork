@@ -5,7 +5,7 @@ A Wayland-native application launcher (KRunner-like) with mouse scroll support, 
 <img width="950" height="702" alt="Anyrun screenshot" src="./image/image.png" />
 
 > [!NOTE]
-> If you use Nvidia and Anyrun refuses to close, set `GSK_RENDERER=ngl`. Run it as `GSK_RENDERER=ngl anyrun`. This is a [known issue](https://forums.developer.nvidia.com/t/580-65-06-gtk-4-apps-hang-when-attempting-to-exit-close/341308/6) dependent on driver versions.
+> Anyrun defaults to `GSK_RENDERER=gl` when `GSK_RENDERER` is not set. If you use Nvidia and Anyrun refuses to close on your driver version, override it with `GSK_RENDERER=ngl anyrun`. See this [known issue](https://forums.developer.nvidia.com/t/580-65-06-gtk-4-apps-hang-when-attempting-to-exit-close/341308/6).
 
 ## Features
 
@@ -287,7 +287,7 @@ The `#[init]` function runs in a separate thread and returns shared state. `#[ge
 
 | Problem | Solution |
 |---------|----------|
-| Anyrun hangs on close (Nvidia) | `GSK_RENDERER=ngl anyrun` |
+| Anyrun hangs on close (Nvidia) | `GSK_RENDERER=ngl anyrun` (override default `gl`) |
 | Plugins not loading | Check `~/.config/anyrun/plugins/` exists and contains `.so` files |
 | Provider not found | Install `anyrun-provider` or set path in config |
 | No results from plugin | Check plugin-specific dependencies (qalc, fd, zoxide, etc.) |

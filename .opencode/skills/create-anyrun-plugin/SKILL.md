@@ -48,15 +48,15 @@ digraph plugin_workflow {
 
 Ask the developer (one question at a time):
 
-| Question | Why | Example |
-|----------|-----|---------|
-| Plugin name | Crate name + directory name | `anyrun-github` |
-| Description | Shown in PluginInfo | "GitHub notifications & PRs" |
-| Prefix | Trigger string | `gh ` |
-| Icon | GTK icon name | `system-search` |
-| Config fields | What user can configure | `prefix`, `max_entries`, `api_token` |
-| State data | What loads at init | Static list, file read, shell command, API fetch |
-| Handler action | What happens on selection | Open URL, copy text, run command, Close |
+| Question       | Why                         | Example                                          |
+| -------------- | --------------------------- | ------------------------------------------------ |
+| Plugin name    | Crate name + directory name | `anyrun-github`                                  |
+| Description    | Shown in PluginInfo         | "GitHub notifications & PRs"                     |
+| Prefix         | Trigger string              | `gh `                                            |
+| Icon           | GTK icon name               | `system-search`                                  |
+| Config fields  | What user can configure     | `prefix`, `max_entries`, `api_token`             |
+| State data     | What loads at init          | Static list, file read, shell command, API fetch |
+| Handler action | What happens on selection   | Open URL, copy text, run command, Close          |
 
 ### Step 2: Choose template complexity
 
@@ -92,6 +92,7 @@ Fix any issues before declaring completion.
 For plugins where `Config` doubles as `State` and no extra data is needed.
 
 **Cargo.toml:**
+
 ```toml
 [package]
 name = "<name>"
@@ -109,6 +110,7 @@ serde         = { features = ["derive"], version = "1.0.228" }
 ```
 
 **src/lib.rs:**
+
 ```rust
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::*;
@@ -170,6 +172,7 @@ fn handler(selection: Match) -> HandleResult {
 ```
 
 **<name>.ron:**
+
 ```ron
 Config(
     prefix: "<prefix>",
@@ -181,6 +184,7 @@ Config(
 For plugins with a Config struct, State with pre-loaded data, prefix-based activation, and fuzzy matching.
 
 **Cargo.toml:**
+
 ```toml
 [package]
 name = "<name>"
@@ -199,6 +203,7 @@ serde         = { features = ["derive"], version = "1.0.228" }
 ```
 
 **src/lib.rs:**
+
 ```rust
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::*;
@@ -309,6 +314,7 @@ mod tests {
 ```
 
 **<name>.ron:**
+
 ```ron
 Config(
     prefix: "<prefix>",
@@ -322,11 +328,13 @@ Config(
 For plugins that load dynamic data at init (files, APIs, shell commands), have complex matching, or need `#[handler]` with `&State`.
 
 Use the Medium template as base, then:
+
 1. Add data loading in `#[init]` before constructing State
 2. Use richer matching (per-field scoring, keyword matching, etc.)
 3. `#[handler]` borrows `&State` when action needs access to loaded data
 
 Example pattern:
+
 ```rust
 #[handler]
 fn handler(selection: Match, state: &State) -> HandleResult {
@@ -350,12 +358,12 @@ After scaffolding, always run:
 
 ## Common Mistakes
 
-| Mistake | Fix |
-|---------|-----|
-| Using `String`/`Vec`/`Option` at FFI boundary | Use `RString`/`RVec`/`ROption` and `.into()` |
-| Making plugin functions `pub` | Remove `pub` — proc-macros handle export |
-| Adding `thiserror`/`anyhow` | Use `eprintln!` for errors, plain `Result` or `Option` |
-| Config file named wrong | Must be `<plugin_name>.ron` in config dir |
-| Forgetting `cdylib` crate type | Add `crate-type = ["cdylib"]` to Cargo.toml |
-| `#[init]` mutable state | Use `static RwLock<Option<T>>` pattern (macro handles this) |
-| Handler returns wrong HandleResult | `Close` to close launcher, `Copy(Vec<u8>)` to copy to clipboard, `Continue` to stay open |
+| Mistake                                       | Fix                                                                                      |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Using `String`/`Vec`/`Option` at FFI boundary | Use `RString`/`RVec`/`ROption` and `.into()`                                             |
+| Making plugin functions `pub`                 | Remove `pub` — proc-macros handle export                                                 |
+| Adding `thiserror`/`anyhow`                   | Use `eprintln!` for errors, plain `Result` or `Option`                                   |
+| Config file named wrong                       | Must be `<plugin_name>.ron` in config dir                                                |
+| Forgetting `cdylib` crate type                | Add `crate-type = ["cdylib"]` to Cargo.toml                                              |
+| `#[init]` mutable state                       | Use `static RwLock<Option<T>>` pattern (macro handles this)                              |
+| Handler returns wrong HandleResult            | `Close` to close launcher, `Copy(Vec<u8>)` to copy to clipboard, `Continue` to stay open |
