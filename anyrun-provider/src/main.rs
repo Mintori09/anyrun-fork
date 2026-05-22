@@ -206,8 +206,61 @@ struct PluginState {
 struct State {
     plugins: Vec<PluginState>,
     plugin_map: HashMap<String, usize>,
+    plugin_dirs: Vec<PathBuf>,
     config_dir: Arc<str>,
     frecency: Arc<Mutex<FrecencyData>>,
+}
+
+fn rebuild_plugin_map(plugins: &[PluginState]) -> HashMap<String, usize> {
+    plugins
+        .iter()
+        .enumerate()
+        .map(|(idx, plugin)| (plugin.info.name.to_string(), idx))
+        .collect()
+}
+
+fn init_plugin_state(plugin: &PluginRef, config_dir: &str) {
+    plugin.init()(config_dir.into());
+}
+
+fn load_plugins(
+    plugin_specs: &[PathBuf],
+    plugin_dirs: &[PathBuf],
+    config_dir: &str,
+) -> Result<Vec<PluginState>, String> {
+    let mut plugins = Vec::with_capacity(plugin_specs.len());
+
+    for plugin_path in plugin_specs {
+        let Some(path) = find_plugin(plugin_path, plugin_dirs) else {
+            return Err(format!(
+                "plugin not found: {}",
+                plugin_path.to_string_lossy()
+            ));
+        };
+
+        let header = abi_stable::library::lib_header_from_path(&path)
+            .map_err(|e| format!("failed to load plugin {}: {e}", path.display()))?;
+        let plugin = header
+            .init_root_module::<PluginRef>()
+            .map_err(|e| format!("failed to init plugin module {}: {e}", path.display()))?;
+
+        init_plugin_state(&plugin, config_dir);
+        let info = plugin.info()();
+        plugins.push(PluginState { plugin, info });
+    }
+
+    Ok(plugins)
+}
+
+fn reload_plugin_set(
+    state: &mut State,
+    plugin_specs: &[PathBuf],
+    plugin_dirs: &[PathBuf],
+) -> Result<(), String> {
+    let plugins = load_plugins(plugin_specs, plugin_dirs, state.config_dir.as_ref())?;
+    state.plugin_map = rebuild_plugin_map(&plugins);
+    state.plugins = plugins;
+    Ok(())
 }
 
 fn spawn_query_worker(
@@ -387,25 +440,16 @@ async fn main() -> io::Result<()> {
 
     let config_dir_str = config_dir.to_string();
 
+    let initial_plugins =
+        load_plugins(&args.plugins, &plugin_dirs, &config_dir_str).map_err(io::Error::other)?;
+
     let mut state = State {
-        plugins: Vec::with_capacity(args.plugins.len()),
-        plugin_map: HashMap::with_capacity(args.plugins.len()),
+        plugin_map: rebuild_plugin_map(&initial_plugins),
+        plugins: initial_plugins,
+        plugin_dirs: plugin_dirs.clone(),
         config_dir,
         frecency,
     };
-
-    for plugin_path in &args.plugins {
-        if let Some(path) = find_plugin(plugin_path, &plugin_dirs)
-            && let Ok(header) = abi_stable::library::lib_header_from_path(&path)
-            && let Ok(plugin) = header.init_root_module::<PluginRef>()
-        {
-            plugin.init()(state.config_dir.as_ref().into());
-            let info = plugin.info()();
-            let idx = state.plugins.len();
-            state.plugin_map.insert(info.name.to_string(), idx);
-            state.plugins.push(PluginState { plugin, info });
-        }
-    }
 
     let (reload_tx, _) = broadcast::channel::<()>(4);
 
@@ -558,11 +602,22 @@ async fn worker(
                         search_workers = start_search_workers(state, new_result_tx);
                         result_rx = new_result_rx;
                     }
-                    Request::ReloadPlugins => {
+                    Request::ReloadPlugins { plugins } => {
                         stop_search_workers(&mut search_workers);
+                        let reload_result = if plugins.is_empty() {
+                            for p in &mut state.plugins {
+                                init_plugin_state(&p.plugin, state.config_dir.as_ref());
+                            }
+                            Ok(())
+                        } else {
+                            let plugin_specs: Vec<PathBuf> =
+                                plugins.iter().map(PathBuf::from).collect();
+                            let plugin_dirs = state.plugin_dirs.clone();
+                            reload_plugin_set(state, &plugin_specs, &plugin_dirs)
+                        };
 
-                        for p in &mut state.plugins {
-                            p.plugin.init()(state.config_dir.as_ref().into());
+                        if let Err(err) = reload_result {
+                            eprintln!("[provider] Reload failed: {err}");
                         }
 
                         let (new_result_tx, new_result_rx) = mpsc::unbounded_channel::<PluginQueryResult>();
@@ -837,10 +892,15 @@ mod tests {
     #[test]
     fn test_reload_plugins_request_serializes() {
         use anyrun_provider_ipc::Request;
-        let req = Request::ReloadPlugins;
+        let req = Request::ReloadPlugins {
+            plugins: vec!["Applications".into()],
+        };
         let json = serde_json::to_string(&req).unwrap();
         let deserialized: Request = serde_json::from_str(&json).unwrap();
-        assert!(matches!(deserialized, Request::ReloadPlugins));
+        assert!(matches!(
+            deserialized,
+            Request::ReloadPlugins { plugins } if plugins == vec!["Applications"]
+        ));
     }
 
     #[test]

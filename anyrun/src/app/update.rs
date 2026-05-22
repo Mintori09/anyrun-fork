@@ -230,7 +230,14 @@ impl App {
                         self.selected_index = 0;
 
                         // 4. Reload plugins with new config
-                        let _ = self.tx.try_send(ipc::Request::ReloadPlugins);
+                        let _ = self.tx.try_send(ipc::Request::ReloadPlugins {
+                            plugins: self
+                                .config
+                                .plugins
+                                .iter()
+                                .map(|p| p.to_string_lossy().to_string())
+                                .collect(),
+                        });
 
                         // 5. Re-search with current input
                         let _ = self.tx.try_send(ipc::Request::Query {
@@ -373,8 +380,7 @@ impl App {
                 self.handle_activate(widgets, invocation, sender, root);
             }
             AppMsg::ReloadPlugins => {
-                self.plugin_health.clear();
-                let _ = self.tx.try_send(ipc::Request::ReloadPlugins);
+                sender.input(AppMsg::Action(Action::ReloadConfig));
             }
             AppMsg::FlushPendingMatches(epoch) => {
                 if epoch != self.search_epoch {

@@ -55,7 +55,10 @@ pub enum Request {
     /// Reload plugin data (e.g. after desktop entries changed).
     /// The provider should re-init all plugins and send back
     /// a new `Ready` response with updated plugin infos.
-    ReloadPlugins,
+    ReloadPlugins {
+        /// Optional plugin paths to reload from config. Empty means re-init current set.
+        plugins: Vec<String>,
+    },
     /// Reload a specific plugin by name.
     /// Useful when a plugin's config file changes.
     ReloadPlugin {
@@ -177,10 +180,15 @@ mod tests {
 
     #[test]
     fn test_reload_plugins_request_serializes() {
-        let req = Request::ReloadPlugins;
+        let req = Request::ReloadPlugins {
+            plugins: vec!["libapplications.so".into()],
+        };
         let bytes = bincode::serialize(&req).unwrap();
         let deserialized: Request = bincode::deserialize(&bytes).unwrap();
-        assert!(matches!(deserialized, Request::ReloadPlugins));
+        assert!(matches!(
+            deserialized,
+            Request::ReloadPlugins { plugins } if plugins == vec!["libapplications.so"]
+        ));
     }
 
     #[test]
@@ -196,7 +204,9 @@ mod tests {
             },
             Request::Recent { limit: 8 },
             Request::Quit,
-            Request::ReloadPlugins,
+            Request::ReloadPlugins {
+                plugins: vec!["Applications".into()],
+            },
         ];
         for req in requests {
             let bytes = bincode::serialize(&req).unwrap();
