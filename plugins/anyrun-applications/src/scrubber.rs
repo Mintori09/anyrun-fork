@@ -251,6 +251,21 @@ impl<'a> LangChoices<'a> {
     }
 }
 
+fn xdg_application_dirs() -> Vec<PathBuf> {
+    let Some(data_dirs) = env::var_os("XDG_DATA_DIRS") else {
+        return vec![PathBuf::from("/usr/share/applications")];
+    };
+
+    let mut ret = Vec::new();
+    for dir in env::split_paths(&data_dirs) {
+        let apps_dir = dir.join("applications");
+        if !ret.contains(&apps_dir) {
+            ret.push(apps_dir);
+        }
+    }
+    ret
+}
+
 pub fn scrubber(config: &Config) -> Result<Vec<(DesktopEntry, u64)>, Box<dyn std::error::Error>> {
     // Create iterator over all the files in the XDG_DATA_DIRS
     // XDG compliancy is cool
@@ -269,46 +284,45 @@ pub fn scrubber(config: &Config) -> Result<Vec<(DesktopEntry, u64)>, Box<dyn std
     let lang = env::var("LANG").ok();
     let lang_choices = LangChoices::new(lang.as_deref());
 
-    let mut entries: HashMap<String, DesktopEntry> = match env::var("XDG_DATA_DIRS") {
-        Ok(data_dirs) => {
-            // The vec for all the DirEntry objects
-            let mut paths = Vec::new();
-            // Parse the XDG_DATA_DIRS variable and list files of all the paths
-            for dir in data_dirs.split(':') {
-                match fs::read_dir(format!("{}/applications/", dir)) {
-                    Ok(dir) => {
-                        paths.extend(dir);
-                    }
-                    Err(why) => {
-                        eprintln!("[applications] Error reading directory {}: {}", dir, why);
-                    }
-                }
-            }
-            // Make sure the list of paths isn't empty
-            if paths.is_empty() {
-                return Err("No valid desktop file dirs found!".into());
-            }
-
-            // Return it
-            paths
+    let mut paths = Vec::new();
+    for dir in xdg_application_dirs() {
+        if !dir.exists() {
+            continue;
         }
-        Err(_) => fs::read_dir("/usr/share/applications")?.collect(),
+        match fs::read_dir(&dir) {
+            Ok(entries) => {
+                paths.extend(entries);
+            }
+            Err(why) if why.kind() == std::io::ErrorKind::NotFound => {}
+            Err(why) => {
+                eprintln!(
+                    "[applications] Error reading directory {}: {}",
+                    dir.display(),
+                    why
+                );
+            }
+        }
     }
-    .into_iter()
-    .filter_map(|entry| {
-        let entry = match entry {
-            Ok(entry) => entry,
-            Err(_why) => return None,
-        };
-        let entries = DesktopEntry::from_dir_entry(&entry, config, &lang_choices);
-        Some(
-            entries
-                .into_iter()
-                .map(|entry| (format!("{}{}", entry.name, entry.icon), entry)),
-        )
-    })
-    .flatten()
-    .collect();
+    if paths.is_empty() {
+        return Err("No valid desktop file dirs found!".into());
+    }
+
+    let mut entries: HashMap<String, DesktopEntry> = paths
+        .into_iter()
+        .filter_map(|entry| {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(_why) => return None,
+            };
+            let entries = DesktopEntry::from_dir_entry(&entry, config, &lang_choices);
+            Some(
+                entries
+                    .into_iter()
+                    .map(|entry| (format!("{}{}", entry.name, entry.icon), entry)),
+            )
+        })
+        .flatten()
+        .collect();
 
     // Go through user directory desktop files for overrides
     match fs::read_dir(&user_path) {
@@ -340,4 +354,50 @@ pub fn scrubber(config: &Config) -> Result<Vec<(DesktopEntry, u64)>, Box<dyn std
         .enumerate()
         .map(|(i, (_, entry))| (entry, i as u64))
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::xdg_application_dirs;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+    }
+
+    #[test]
+    fn xdg_application_dirs_deduplicates_and_appends_applications() {
+        let _guard = env_lock();
+        let original = std::env::var_os("XDG_DATA_DIRS");
+        unsafe { std::env::set_var("XDG_DATA_DIRS", "/usr/share:/usr/share:/opt/share") };
+
+        let dirs = xdg_application_dirs();
+        assert_eq!(dirs.len(), 2);
+        assert_eq!(dirs[0], std::path::PathBuf::from("/usr/share/applications"));
+        assert_eq!(dirs[1], std::path::PathBuf::from("/opt/share/applications"));
+
+        if let Some(val) = original {
+            unsafe { std::env::set_var("XDG_DATA_DIRS", val) };
+        } else {
+            unsafe { std::env::remove_var("XDG_DATA_DIRS") };
+        }
+    }
+
+    #[test]
+    fn xdg_application_dirs_falls_back_to_usr_share() {
+        let _guard = env_lock();
+        let original = std::env::var_os("XDG_DATA_DIRS");
+        unsafe { std::env::remove_var("XDG_DATA_DIRS") };
+
+        let dirs = xdg_application_dirs();
+        assert_eq!(
+            dirs,
+            vec![std::path::PathBuf::from("/usr/share/applications")]
+        );
+
+        if let Some(val) = original {
+            unsafe { std::env::set_var("XDG_DATA_DIRS", val) };
+        }
+    }
 }
