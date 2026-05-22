@@ -17,8 +17,10 @@ use crate::daemon::run_daemon;
 use crate::dbus::fast_ipc_call;
 
 fn main() {
-    unsafe {
-        env::set_var("GSK_RENDERER", "ngl");
+    if env::var_os("GSK_RENDERER").is_none() {
+        unsafe {
+            env::set_var("GSK_RENDERER", "gl");
+        }
     }
     let args = Args::parse();
 
