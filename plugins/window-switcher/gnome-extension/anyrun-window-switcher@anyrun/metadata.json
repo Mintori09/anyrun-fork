@@ -1,0 +1,7 @@
+{
+  "uuid": "anyrun-window-switcher@anyrun",
+  "name": "Anyrun Window Switcher Bridge",
+  "description": "Exposes GNOME Shell windows over D-Bus for Anyrun window-switcher plugin",
+  "shell-version": ["46", "47", "48"],
+  "url": "https://github.com/anyrun-org/anyrun"
+}

@@ -26,7 +26,7 @@ fn init(config_dir: RString) -> Option<State> {
         .and_then(|content| ron::from_str(&content).ok())
         .unwrap_or_default();
 
-    let backend = match backends::detect_backend() {
+    let backend = match backends::detect_backend(&config) {
         Some(be) => be,
         None => {
             eprintln!("[window-switcher] No supported compositor detected");
