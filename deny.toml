@@ -1,0 +1,7 @@
+[advisories]
+unmaintained = "workspace"
+ignore = [
+  { id = "RUSTSEC-2025-0141", reason = "Temporary: anyrun-provider-ipc still uses bincode; planned codec migration tracked separately. Review by 2026-08-31." },
+  { id = "RUSTSEC-2024-0014", reason = "Transitive via abi_stable. No maintained replacement in current plugin ABI stack. Review by 2026-08-31." },
+  { id = "RUSTSEC-2024-0436", reason = "Transitive via abi_stable. No direct dependency in workspace crates. Review by 2026-08-31." },
+]
