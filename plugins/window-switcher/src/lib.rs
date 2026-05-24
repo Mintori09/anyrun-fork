@@ -79,6 +79,9 @@ fn get_matches(input: RString, state: &Option<State>) -> RVec<Match> {
         Some(q) => q.trim_start().to_string(),
         None => return RVec::new(),
     };
+    if query.is_empty() && !state.config.show_results_immediately {
+        return RVec::new();
+    }
 
     let windows = state.backend.list_windows();
 
