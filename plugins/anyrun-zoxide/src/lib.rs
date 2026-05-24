@@ -138,7 +138,7 @@ pub fn launch_terminal_at_path(path: &str) {
     let mut cmd = Command::new(&terminal);
     terminal::configure_terminal_environment(&mut cmd);
 
-    let result = cmd.arg("--working-directory").arg(path).spawn();
+    let result = anyrun_plugin::spawn_detached(cmd.arg("--working-directory").arg(path));
 
     if let Err(error) = result {
         eprintln!("[Zoxide] Failed to spawn {}: {}", terminal, error);

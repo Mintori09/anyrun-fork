@@ -240,6 +240,18 @@ fn handler(selection: Match, state: &State) -> HandleResult {
 
 The `#[init]` function runs in a separate thread and returns shared state. `#[get_matches]` uses fuzzy matching via `anyrun_helper::mazzy_matcher`. State is wrapped in `RwLock<Option<T>>` internally.
 
+For launch actions from handlers, prefer detached spawns so started apps survive launcher shutdown:
+
+```rust
+#[handler]
+fn handler(selection: Match) -> HandleResult {
+    let _ = anyrun_plugin::spawn_detached(
+        std::process::Command::new("xdg-open").arg(selection.title.as_str()),
+    );
+    HandleResult::Close
+}
+```
+
 ### HandleResult
 
 | Variant | Description |

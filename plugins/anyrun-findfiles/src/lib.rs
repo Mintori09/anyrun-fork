@@ -213,7 +213,7 @@ fn handler(selection: Match, config: &Config) -> HandleResult {
     let template = get_execution_template(selection.id, config);
     let command_string = template.replace("{}", &entry_path);
 
-    let _ = Command::new("sh").arg("-c").arg(command_string).spawn();
+    let _ = anyrun_plugin::spawn_detached(Command::new("sh").arg("-c").arg(command_string));
 
     HandleResult::Close
 }

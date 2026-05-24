@@ -176,7 +176,7 @@ fn execute_command(cmd: &str) -> std::io::Result<()> {
     let mut command = Command::new("sh");
     terminal::configure_terminal_environment(&mut command);
 
-    command.arg("-c").arg(cmd).spawn()?;
+    anyrun_plugin::spawn_detached(command.arg("-c").arg(cmd))?;
     Ok(())
 }
 

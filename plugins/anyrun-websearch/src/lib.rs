@@ -1,8 +1,9 @@
 use abi_stable::std_types::{ROption, RString, RVec};
-use anyrun_helper::{focus_to_class, icon::get_icon_path};
+use anyrun_helper::focus_to_class;
+use anyrun_helper::icon::get_icon_path;
 use anyrun_plugin::*;
 use serde::Deserialize;
-use std::{fs, process::Command};
+use std::{fs, process::Command, thread, time::Duration};
 
 #[derive(Deserialize)]
 struct SearchEngine {
@@ -12,8 +13,11 @@ struct SearchEngine {
 }
 
 #[derive(Deserialize)]
+#[serde(default)]
 struct Config {
     engines: Vec<SearchEngine>,
+    focus_class: Option<String>,
+    focus_delay_ms: u64,
 }
 
 impl Default for Config {
@@ -31,6 +35,8 @@ impl Default for Config {
                     url: "https://github.com/search?q={}".into(),
                 },
             ],
+            focus_class: None,
+            focus_delay_ms: 120,
         }
     }
 }
@@ -76,15 +82,19 @@ fn get_matches(input: RString, config: &Config) -> RVec<Match> {
 }
 
 #[handler]
-fn handler(selection: Match) -> HandleResult {
+fn handler(selection: Match, config: &Config) -> HandleResult {
     let url = selection.description.unwrap();
 
-    if let Err(why) = Command::new("xdg-open").arg(url.as_str()).spawn() {
+    if let Err(why) = anyrun_plugin::spawn_detached(Command::new("xdg-open").arg(url.as_str())) {
         eprintln!("[browser-search] Failed to open browser: {}", why);
     }
 
-    focus_to_class("firefox");
-    focus_to_class("zen");
+    if let Some(class) = config.focus_class.as_deref().map(str::trim)
+        && !class.is_empty()
+    {
+        thread::sleep(Duration::from_millis(config.focus_delay_ms));
+        focus_to_class(class);
+    }
 
     HandleResult::Close
 }

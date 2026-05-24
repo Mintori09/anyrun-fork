@@ -231,10 +231,8 @@ fn handler(selection: Match, state: &State) -> HandleResult {
 
     if needs_terminal {
         anyrun_helper::terminal::launch(&resolved);
-    } else if let Err(e) = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(&resolved)
-        .spawn()
+    } else if let Err(e) =
+        anyrun_plugin::spawn_detached(std::process::Command::new("sh").arg("-c").arg(&resolved))
     {
         eprintln!("[git-projects] failed to execute command: {}", e);
     }

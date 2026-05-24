@@ -125,7 +125,7 @@ fn handler(selection: Match, _state: &State) -> HandleResult {
             path.into()
         };
 
-        let _ = Command::new("sh").arg(expanded_path).spawn();
+        let _ = anyrun_plugin::spawn_detached(Command::new("sh").arg(expanded_path));
     }
     HandleResult::Close
 }

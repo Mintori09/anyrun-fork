@@ -89,9 +89,9 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
 #[handler]
 fn handler(selection: Match) -> HandleResult {
     if let ROption::RSome(id) = selection.description {
-        let _ = Command::new("kcmshell6")
-            .arg(format!("kcm_{}", id.to_string()))
-            .spawn();
+        let _ = anyrun_plugin::spawn_detached(
+            Command::new("kcmshell6").arg(format!("kcm_{}", id.to_string())),
+        );
     }
     HandleResult::Close
 }

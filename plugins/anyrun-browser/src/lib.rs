@@ -182,10 +182,11 @@ fn handler(selection: Match, state: &State) -> HandleResult {
     if let ROption::RSome(tab_id) = selection.description {
         focus_to_class("firefox");
 
-        let _ = Command::new(&state.full_path)
-            .arg("activate")
-            .arg(tab_id.to_string())
-            .spawn();
+        let _ = anyrun_plugin::spawn_detached(
+            Command::new(&state.full_path)
+                .arg("activate")
+                .arg(tab_id.to_string()),
+        );
     }
     HandleResult::Close
 }

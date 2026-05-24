@@ -45,7 +45,9 @@ pub fn handler(selection: Match, state: &mut State) -> HandleResult {
     match &state.selection {
         Some(index_entry) => match selection.id.unwrap().into() {
             IndexAction::Open => {
-                if let Err(why) = Command::new("xdg-open").arg(&index_entry.path).spawn() {
+                if let Err(why) =
+                    anyrun_plugin::spawn_detached(Command::new("xdg-open").arg(&index_entry.path))
+                {
                     eprintln!("[kidex] Error running xdg-open: {why}");
                 }
                 HandleResult::Close

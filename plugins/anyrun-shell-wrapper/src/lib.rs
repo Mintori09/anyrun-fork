@@ -158,7 +158,7 @@ fn handler(selection: Match, state: &State) -> HandleResult {
 fn execute_command(cmd: &str) {
     let mut command = Command::new("sh");
     terminal::configure_terminal_environment(&mut command);
-    let result = command.arg("-c").arg(cmd).spawn();
+    let result = anyrun_plugin::spawn_detached(command.arg("-c").arg(cmd));
 
     if let Err(error) = result {
         eprintln!("[Zoxide] Failed to spawn: {}", error);
