@@ -157,7 +157,8 @@ fn handler(selection: Match, state: &State) -> HandleResult {
                     let _ = adapter.set_powered(false).await;
                 }
                 ACTION_DISCOVERY => {
-                    let _ = std::process::Command::new("bluedevil-wizard").spawn();
+                    let mut cmd = std::process::Command::new("bluedevil-wizard");
+                    let _ = anyrun_plugin::spawn_detached(&mut cmd);
                 }
                 idx if idx >= DEVICE_ID_OFFSET => {
                     toggle_device_connection(&adapter, selection).await;

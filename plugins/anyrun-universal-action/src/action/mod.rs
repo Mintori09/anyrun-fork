@@ -11,10 +11,9 @@ impl ActionTarget {
                 let cmd_script = cmd_template
                     .replace("{clip}", clipboard)
                     .replace("{ext}", &filetype.get_extension());
-                let _ = std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(cmd_script)
-                    .spawn();
+                let _ = anyrun_plugin::spawn_detached(
+                    std::process::Command::new("sh").arg("-c").arg(cmd_script),
+                );
             }
             ActionTarget::Internal(func) => {
                 func(clipboard, filetype);

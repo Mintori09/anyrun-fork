@@ -228,9 +228,7 @@ fn handler(selection: Match, state: &State) -> HandleResult {
         command.arg("--impure");
     }
 
-    // A zombie process is exactly what we want
-    #[allow(clippy::zombie_processes)]
-    command.spawn().unwrap();
+    anyrun_plugin::spawn_detached(&mut command).unwrap();
 
     HandleResult::Close
 }

@@ -1,5 +1,5 @@
 use std::env;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 const PREFERRED_TERMINALS: &[&str] = &[
     "kitty",
@@ -53,11 +53,20 @@ pub fn configure_terminal_environment(command: &mut Command) {
     );
 }
 
-#[allow(clippy::zombie_processes)]
 fn launch_in_terminal(terminal: &str, shell_command: &str) {
     let mut process = Command::new(terminal);
 
     configure_terminal_environment(&mut process);
+
+    process.stdin(Stdio::null());
+    process.stdout(Stdio::null());
+    process.stderr(Stdio::null());
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        process.process_group(0);
+    }
 
     process
         .arg("sh")

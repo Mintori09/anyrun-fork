@@ -84,25 +84,22 @@ pub fn handler(selection: Match, state: &State) -> HandleResult {
 
     if entry.term {
         if let Some(term) = &state.cached_terminal {
-            let _ = Command::new("sh")
-                .args([
-                    "-c",
-                    &format!("{} {}", term.command, term.args.replace("{}", &exec)),
-                ])
-                .spawn();
+            let _ = anyrun_plugin::spawn_detached(Command::new("sh").args([
+                "-c",
+                &format!("{} {}", term.command, term.args.replace("{}", &exec)),
+            ]));
         }
     } else {
         let current_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
-        let _ = Command::new("sh")
-            .args(["-c", &entry.exec])
-            .current_dir(
+        let _ = anyrun_plugin::spawn_detached(
+            Command::new("sh").args(["-c", &entry.exec]).current_dir(
                 entry
                     .path
                     .as_ref()
                     .filter(|p| p.exists())
                     .unwrap_or(&current_dir),
-            )
-            .spawn();
+            ),
+        );
     }
 
     HandleResult::Close
