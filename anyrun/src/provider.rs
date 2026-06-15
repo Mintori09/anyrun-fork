@@ -147,18 +147,21 @@ async fn relay_loop(
     loop {
         tokio::select! {
             req = rx.recv() => {
-                if let Some(req) = req {
-                    socket.send(&req).await?;
-                    if matches!(req, ipc::Request::Quit) {
-                        break;
-                    }
+                let Some(req) = req else {
+                    break;
+                };
+                socket.send(&req).await?;
+                if matches!(req, ipc::Request::Quit) {
+                    break;
                 }
             }
             res = socket.recv() => {
                 match res {
                     Ok(response) => sender.emit(response),
                     Err(why) => {
-                        eprintln!("[anyrun] Error reading from IPC: {why}");
+                        if !is_expected_ipc_disconnect(&why) {
+                            eprintln!("[anyrun] Error reading from IPC: {why}");
+                        }
                         break;
                     },
                 }
@@ -168,9 +171,13 @@ async fn relay_loop(
     Ok(())
 }
 
+fn is_expected_ipc_disconnect(err: &io::Error) -> bool {
+    ipc::is_ipc_disconnect(err)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::connect_with_retry;
+    use super::{connect_with_retry, is_expected_ipc_disconnect};
     use std::io;
     use std::path::PathBuf;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -220,5 +227,17 @@ mod tests {
         .expect_err("missing socket should time out");
 
         assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    }
+
+    #[test]
+    fn expected_ipc_disconnect_kinds() {
+        let eof = io::Error::new(io::ErrorKind::UnexpectedEof, "peer closed");
+        assert!(is_expected_ipc_disconnect(&eof));
+
+        let reset = io::Error::new(io::ErrorKind::ConnectionReset, "reset");
+        assert!(is_expected_ipc_disconnect(&reset));
+
+        let invalid = io::Error::new(io::ErrorKind::InvalidData, "invalid");
+        assert!(!is_expected_ipc_disconnect(&invalid));
     }
 }
