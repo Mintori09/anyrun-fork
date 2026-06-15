@@ -1,3 +1,4 @@
+use std::error::Error as StdError;
 use std::io;
 
 use anyrun_interface::{HandleResult, Match, PluginInfo, abi_stable::std_types::RVec};
@@ -170,8 +171,31 @@ impl Socket {
         }
         let mut buf = vec![0u8; len];
         self.inner.read_exact(&mut buf).await?;
-        bincode::deserialize::<T>(&buf).map_err(io::Error::other)
+        bincode::deserialize::<T>(&buf).map_err(|e| match *e {
+            bincode::ErrorKind::Io(io_err) => io_err,
+            other => io::Error::other(Box::new(other)),
+        })
     }
+}
+
+/// Check whether an `io::Error` (at any depth in the error chain) indicates
+/// a normal IPC peer disconnect (UnexpectedEof or ConnectionReset).
+///
+/// This walks the full [`std::error::Error::source`] chain to catch wrapped
+/// errors, e.g. `io::Error::other()` wrapping a `bincode::Error` that wraps
+/// an inner `io::Error` with `UnexpectedEof`.
+pub fn is_ipc_disconnect(err: &io::Error) -> bool {
+    let mut current: Option<&dyn StdError> = Some(err);
+    while let Some(e) = current {
+        if let Some(io) = e.downcast_ref::<io::Error>() {
+            match io.kind() {
+                io::ErrorKind::UnexpectedEof | io::ErrorKind::ConnectionReset => return true,
+                _ => {}
+            }
+        }
+        current = e.source();
+    }
+    false
 }
 
 #[cfg(test)]
@@ -254,5 +278,29 @@ mod tests {
             let deserialized: Response = bincode::deserialize(&bytes).unwrap();
             assert_eq!(format!("{response:?}"), format!("{deserialized:?}"));
         }
+    }
+
+    #[test]
+    fn is_ipc_disconnect_detects_direct_unexpected_eof() {
+        let e = io::Error::new(io::ErrorKind::UnexpectedEof, "eof");
+        assert!(is_ipc_disconnect(&e));
+    }
+
+    #[test]
+    fn is_ipc_disconnect_detects_direct_connection_reset() {
+        let e = io::Error::new(io::ErrorKind::ConnectionReset, "reset");
+        assert!(is_ipc_disconnect(&e));
+    }
+
+    #[test]
+    fn is_ipc_disconnect_rejects_other_errors() {
+        let e = io::Error::new(io::ErrorKind::NotFound, "not found");
+        assert!(!is_ipc_disconnect(&e));
+    }
+
+    #[test]
+    fn is_ipc_disconnect_rejects_non_disconnect() {
+        let e = io::Error::new(io::ErrorKind::InvalidData, "bad data");
+        assert!(!is_ipc_disconnect(&e));
     }
 }
