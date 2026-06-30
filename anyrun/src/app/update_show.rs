@@ -83,7 +83,6 @@ impl App {
 
         // Reset rapid typing state for new session
         self.last_entry_change = None;
-        self.skip_animations = false;
 
         // Re-load CSS if in daemon mode to support hot-reload
         if self.is_daemon {
