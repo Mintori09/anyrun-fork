@@ -30,7 +30,8 @@ CI: nightly Rust, `cargo build` only (no tests/clippy). `cargo deny` weekly.
 
 - **anyrun** — relm4 component (`anyrun/src/app/mod.rs`). Messages via `AppMsg` enum, UI via `AppWidgets`. GTK4 layer-shell window.
 - **anyrun-provider** — required separate binary (since 25.12.0). Spawns plugin processes, collects results via IPC. Set path in config: `provider: "anyrun-provider"`.
-- **IPC** — `anyrun_provider_ipc::Request::Query { text, phase, plugins }`. `QueryPhase::Settling` (debounced final query) then `QueryPhase::Flushing` (batched incremental). Search UX config in `config.ron`: `search_ux` block with `settle_delay_ms`, `flush_delay_ms`, `typing_visual`, `bare_text_fast_lane`, `prefix_routes`.
+- **IPC** — `anyrun_provider_ipc::Request::Query { text, phase, plugins }`. `QueryPhase::Settling` (debounced final query) then `QueryPhase::Flushing` (batched incremental). Search UX config in `config.ron`: `search_ux` block with `settle_delay_ms`, `flush_delay_ms`, `typing_visual` (DimPrevious shows animated loading bar, KeepPrevious keeps results, Clear hides results), `bare_text_fast_lane`, `prefix_routes`.
+- **Loading indicator** — Instead of dimming results, `DimPrevious` now shows a CSS-animated loading bar (`search-progress`) between the entry and scroll area. The bar appears on keystroke and hides when settle results arrive. CSS class `.search-progress.active` controls visibility.
 
 ## Code Conventions
 

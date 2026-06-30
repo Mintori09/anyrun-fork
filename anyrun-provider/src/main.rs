@@ -1,7 +1,7 @@
 use anyrun_interface::{HandleResult, Match, PluginInfo, PluginRef, abi_stable};
 use anyrun_provider_ipc::{
-    is_ipc_disconnect, CONFIG_DIRS, PLUGIN_PATHS, PluginHealth, PluginHealthState, RecentMatch,
-    Request, Response, Socket,
+    CONFIG_DIRS, PLUGIN_PATHS, PluginHealth, PluginHealthState, RecentMatch, Request, Response,
+    Socket, is_ipc_disconnect,
 };
 use chrono::{DateTime, Utc};
 use clap::{Parser, Subcommand};
