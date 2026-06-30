@@ -82,10 +82,11 @@ Config(
     ),
   ],
 
+  // Search UX tuning
   search_ux: (
-    settle_delay_ms: 200,
-    flush_delay_ms: 50,
-    typing_visual: DimPrevious,
+    settle_delay_ms: 200,      // Debounce delay (ms) before sending final settle query
+    flush_delay_ms: 50,        // Delay (ms) before batching pending results to UI
+    typing_visual: DimPrevious, // Visual feedback while typing: DimPrevious (loading bar), KeepPrevious, Clear
     plugin_timeout_ms: 800,
     slow_plugin_ms: 250,
     prefix_discovery_trigger: "?",
