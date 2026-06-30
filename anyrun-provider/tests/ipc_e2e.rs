@@ -136,8 +136,7 @@ async fn provider_responds_to_query_with_no_plugins() {
         .await
         .expect("failed to send Query request");
 
-    let result =
-        tokio::time::timeout(Duration::from_millis(300), socket.recv::<Response>()).await;
+    let result = tokio::time::timeout(Duration::from_millis(300), socket.recv::<Response>()).await;
     match result {
         Ok(Ok(resp)) => match resp {
             Response::Health { .. } => { /* acceptable */ }
@@ -165,9 +164,7 @@ async fn provider_handles_quit_gracefully() {
         .await
         .expect("failed to send Quit");
 
-    let status = provider
-        .wait()
-        .expect("provider failed to exit after Quit");
+    let status = provider.wait().expect("provider failed to exit after Quit");
     assert!(
         status.success(),
         "provider exited with non-zero status: {status}"
@@ -246,8 +243,7 @@ async fn provider_query_fast_lane_plugins() {
         .await
         .expect("failed to send Query");
 
-    let result =
-        tokio::time::timeout(Duration::from_millis(300), socket.recv::<Response>()).await;
+    let result = tokio::time::timeout(Duration::from_millis(300), socket.recv::<Response>()).await;
     assert!(result.is_err(), "expected timeout but got response");
 
     provider.kill().expect("failed to kill provider");
