@@ -276,6 +276,7 @@ impl App {
                 self.search_epoch = self.search_epoch.wrapping_add(1);
                 self.settle_animation_epoch = None;
                 self.settled_once = false;
+                self.settle_query_sent = false;
                 self.pending_matches.clear();
                 self.pending_flush_scheduled = false;
                 self.pending_settle_epoch = Some(self.search_epoch);
@@ -299,21 +300,21 @@ impl App {
                     return;
                 }
 
-                // Detect rapid typing (keystrokes within 100ms of each other)
+                // Detect rapid typing: skip IPC query if keystroke interval < settle_delay_ms
                 let now = std::time::Instant::now();
                 let is_rapid = self
                     .last_entry_change
-                    .map(|t| now.duration_since(t) < std::time::Duration::from_millis(100))
+                    .map(|t| {
+                        now.duration_since(t)
+                            < std::time::Duration::from_millis(
+                                self.config.search_ux.settle_delay_ms,
+                            )
+                    })
                     .unwrap_or(false);
-
-                // Track rapid typing for animation skipping
-                self.skip_animations = is_rapid;
                 self.last_entry_change = Some(now);
 
-                // Keep previous results during rapid typing to avoid strobing
-                if !is_rapid {
-                    self.set_pending_visual_state(widgets);
-                }
+                // Show loading bar; keep previous results visible always
+                self.set_pending_visual_state(widgets);
 
                 // Cancel any pending query to prevent backlog during rapid typing
                 if let Some(cancellable) = self.search_cancellable.take() {
@@ -326,18 +327,23 @@ impl App {
                 let sender_clone = sender.clone();
                 let epoch = self.search_epoch;
                 let settle_delay = self.config.search_ux.settle_delay_ms;
-                let typing_plugins = self.route_plugins(&text);
-                self.settling_plugins_sent
-                    .extend(typing_plugins.iter().cloned());
 
-                let _ = tx.try_send(ipc::Request::Query {
-                    text: text.clone(),
-                    phase: QueryPhase::Typing,
-                    plugins: typing_plugins,
-                    timeout_ms: self.config.search_ux.plugin_timeout_ms,
-                    slow_ms: self.config.search_ux.slow_plugin_ms,
-                });
+                if !is_rapid {
+                    // Only send Typing query if the user paused long enough
+                    let typing_plugins = self.route_plugins(&text);
+                    self.settling_plugins_sent
+                        .extend(typing_plugins.iter().cloned());
 
+                    let _ = tx.try_send(ipc::Request::Query {
+                        text: text.clone(),
+                        phase: QueryPhase::Typing,
+                        plugins: typing_plugins,
+                        timeout_ms: self.config.search_ux.plugin_timeout_ms,
+                        slow_ms: self.config.search_ux.slow_plugin_ms,
+                    });
+                }
+
+                // Always schedule settle (cancellable prevents stale fire)
                 if settle_delay == 0 {
                     if !cancellable.is_cancelled() {
                         sender_clone.input(AppMsg::TriggerSettledQuery(epoch, text));
@@ -395,6 +401,7 @@ impl App {
                     return;
                 }
 
+                self.settle_query_sent = true;
                 let plugins = self.settling_plugins();
                 if plugins.is_empty() {
                     return;
