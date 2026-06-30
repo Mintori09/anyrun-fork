@@ -213,7 +213,10 @@ mod tests {
         // Don't create the dir
         let report = inspect_config_dir(&root);
         assert!(report.required_failures > 0);
-        assert!(report.lines.iter().any(|l| l.contains("config dir missing")));
+        assert!(report
+            .lines
+            .iter()
+            .any(|l| l.contains("config dir missing")));
         let _ = fs::remove_dir_all(root);
     }
 
@@ -224,7 +227,10 @@ mod tests {
         // No config.ron
         let report = inspect_config_dir(&root);
         assert!(report.required_failures > 0);
-        assert!(report.lines.iter().any(|l| l.contains("config read failed")));
+        assert!(report
+            .lines
+            .iter()
+            .any(|l| l.contains("config read failed")));
         let _ = fs::remove_dir_all(root);
     }
 
@@ -235,7 +241,10 @@ mod tests {
         fs::write(root.join("config.ron"), "not valid ron {{{").unwrap();
         let report = inspect_config_dir(&root);
         assert!(report.required_failures > 0);
-        assert!(report.lines.iter().any(|l| l.contains("config parse failed")));
+        assert!(report
+            .lines
+            .iter()
+            .any(|l| l.contains("config parse failed")));
         let _ = fs::remove_dir_all(root);
     }
 
@@ -392,10 +401,7 @@ mod tests {
         let plugin_path = root.join("plugins").join("libtest.so");
         fs::write(&plugin_path, "not a real plugin").unwrap();
 
-        let found = find_plugin(
-            &PathBuf::from("test"),
-            &[root.join("plugins")],
-        );
+        let found = find_plugin(&PathBuf::from("test"), &[root.join("plugins")]);
         assert_eq!(found, Some(plugin_path));
         let _ = fs::remove_dir_all(root);
     }
