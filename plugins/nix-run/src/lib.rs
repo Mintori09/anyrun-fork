@@ -228,7 +228,10 @@ fn handler(selection: Match, state: &State) -> HandleResult {
         command.arg("--impure");
     }
 
-    anyrun_plugin::spawn_detached(&mut command).unwrap();
+    anyrun_plugin::spawn_detached(&mut command)
+        .unwrap()
+        .wait()
+        .unwrap();
 
     HandleResult::Close
 }

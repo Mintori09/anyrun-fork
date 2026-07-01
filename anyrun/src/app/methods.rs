@@ -105,10 +105,6 @@ impl App {
             return;
         }
 
-        if self.skip_animations && !self.show_shortcuts {
-            return;
-        }
-
         let adj = widgets.scroll().vadjustment();
         let scroll_top = adj.value();
 
@@ -183,18 +179,17 @@ impl App {
     }
 
     pub(super) fn set_pending_visual_state(&mut self, widgets: &AppWidgets) {
+        widgets.search_progress().add_css_class("active");
         match self.config.search_ux.typing_visual {
-            TypingVisual::DimPrevious => widgets.scroll().add_css_class("search-pending"),
-            TypingVisual::KeepPrevious => widgets.scroll().remove_css_class("search-pending"),
+            TypingVisual::DimPrevious | TypingVisual::KeepPrevious => {}
             TypingVisual::Clear => {
-                widgets.scroll().remove_css_class("search-pending");
                 self.matches.guard().clear();
             }
         }
     }
 
     pub(super) fn clear_pending_visual_state(&self, widgets: &AppWidgets) {
-        widgets.scroll().remove_css_class("search-pending");
+        widgets.search_progress().remove_css_class("active");
     }
 
     fn match_prefix_route(&self, input: &str) -> Option<&PrefixRoute> {

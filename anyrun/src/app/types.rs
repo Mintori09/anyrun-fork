@@ -26,13 +26,11 @@ pub struct App {
     pub(super) is_daemon: bool,
     pub(super) search_cancellable: Option<gio::Cancellable>,
     pub(super) last_css_load: Option<std::time::SystemTime>,
-    /// Track last entry change time for rapid-typing detection
     pub(super) last_entry_change: Option<std::time::Instant>,
-    /// Skip animations during rapid typing
-    pub(super) skip_animations: bool,
     pub(super) search_epoch: u64,
     pub(super) settle_animation_epoch: Option<u64>,
     pub(super) settled_once: bool,
+    pub(super) settle_query_sent: bool,
     pub(super) current_input: String,
     pub(super) pending_matches:
         HashMap<String, abi_stable::std_types::RVec<anyrun_interface::Match>>,

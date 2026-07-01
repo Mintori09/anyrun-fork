@@ -53,6 +53,7 @@ pub fn configure_terminal_environment(command: &mut Command) {
     );
 }
 
+#[allow(clippy::zombie_processes)]
 fn launch_in_terminal(terminal: &str, shell_command: &str) {
     let mut process = Command::new(terminal);
 

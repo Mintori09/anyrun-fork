@@ -29,53 +29,38 @@ impl App {
         }
         self.last_flush_hash = hash;
 
+        // Build interleaved list directly from pending_matches, using self.plugin_names for order
         let pending = &self.pending_matches;
-
-        let plugin_names: Vec<String> = self
-            .plugin_names
-            .iter()
-            .filter(|name| pending.contains_key(*name))
-            .cloned()
-            .collect();
-
-        struct PluginEntry {
-            name: String,
-            matches: Vec<anyrun_interface::Match>,
-        }
-
-        let entries: Vec<PluginEntry> = plugin_names
-            .iter()
-            .filter_map(|name| {
-                pending.get(name).map(|ms| PluginEntry {
-                    name: name.clone(),
-                    matches: ms.iter().cloned().collect(),
-                })
-            })
-            .collect();
-
-        // Group by plugin: prefix-matched first, then the rest
         let interleaved: Vec<(anyrun_interface::Match, String)> = {
             let mut result = Vec::new();
 
             if let Some(prefix_set) = self.partial_prefix_plugins() {
-                for entry in &entries {
-                    if prefix_set.contains(&entry.name) {
-                        for m in &entry.matches {
-                            result.push((m.clone(), entry.name.clone()));
+                for name in &self.plugin_names {
+                    if !prefix_set.contains(name.as_str()) {
+                        continue;
+                    }
+                    if let Some(ms) = pending.get(name) {
+                        for m in ms.iter() {
+                            result.push((m.clone(), name.clone()));
                         }
                     }
                 }
-                for entry in &entries {
-                    if !prefix_set.contains(&entry.name) {
-                        for m in &entry.matches {
-                            result.push((m.clone(), entry.name.clone()));
+                for name in &self.plugin_names {
+                    if prefix_set.contains(name.as_str()) {
+                        continue;
+                    }
+                    if let Some(ms) = pending.get(name) {
+                        for m in ms.iter() {
+                            result.push((m.clone(), name.clone()));
                         }
                     }
                 }
             } else {
-                for entry in &entries {
-                    for m in &entry.matches {
-                        result.push((m.clone(), entry.name.clone()));
+                for name in &self.plugin_names {
+                    if let Some(ms) = pending.get(name) {
+                        for m in ms.iter() {
+                            result.push((m.clone(), name.clone()));
+                        }
                     }
                 }
             }
@@ -87,17 +72,19 @@ impl App {
         {
             let mut guard = self.matches.guard();
             guard.clear();
-            for (m, name) in interleaved {
-                let info = self.plugin_info_map.get(&name).cloned().unwrap_or_else(|| {
-                    anyrun_interface::PluginInfo {
+            for (m, name) in &interleaved {
+                let info = self
+                    .plugin_info_map
+                    .get(name.as_str())
+                    .cloned()
+                    .unwrap_or_else(|| anyrun_interface::PluginInfo {
                         name: name.clone().into(),
                         icon: String::new().into(),
-                    }
-                });
+                    });
                 guard.push_back((
-                    m,
+                    m.clone(),
                     self.config.clone(),
-                    plugin_type_label(&name),
+                    plugin_type_label(name),
                     info,
                     MatchSource::Provider,
                 ));
@@ -105,7 +92,11 @@ impl App {
         }
 
         self.apply_results_layout(widgets, root);
-        self.clear_pending_visual_state(widgets);
+
+        if self.settle_query_sent {
+            self.settle_query_sent = false;
+            self.clear_pending_visual_state(widgets);
+        }
 
         if !self.matches_entered {
             self.matches_entered = true;
