@@ -143,7 +143,7 @@ Key options:
 - `provider`: Path to `anyrun-provider` binary
 - `keybinds`: Custom key binding actions (Select, OpenActions, Up, Down, Close)
   - Enter aliases are treated the same for matching: `Return`, `KP_Enter`, `ISO_Enter`
-- `search_ux`: Search UX tuning (settle/flush delays, plugin timeout/health, prefix discovery, empty recent state)
+- `search_ux`: Search UX tuning (settle/flush delays, plugin timeout/health, prefix discovery, empty recent state, typing visual — `DimPrevious` shows a subtle loading bar, `KeepPrevious` keeps results unchanged, `Clear` shows no results while typing)
 
 ### Styling
 
@@ -160,6 +160,8 @@ Anyrun supports [GTK4 CSS](https://docs.gtk.org/gtk4/css-properties.html). Style
 | `.match` | `GtkBox` | Match entry row |
 | `.match .title` | `GtkLabel` | Match title |
 | `.match .description` | `GtkLabel` | Match description |
+| `.search-progress` | `GtkBox` | Search loading bar (animated shimmer while typing) |
+| `.search-progress.active` | (state) | Visible state of the loading bar |
 
 Use `GTK_DEBUG=interactive anyrun` for live CSS editing. See [anyrun/res/style.css](anyrun/res/style.css) for the default style.
 

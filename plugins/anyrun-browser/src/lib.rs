@@ -5,6 +5,7 @@ use anyrun_plugin::*;
 use serde::Deserialize;
 use std::process::Command;
 use std::sync::Mutex;
+use std::thread;
 use std::time::{Duration, Instant};
 use std::{env, fs, path::PathBuf};
 
@@ -15,6 +16,8 @@ struct Config {
     max_entries: usize,
     source: String,
     cache_ttl_secs: u64,
+    focus_class: Option<String>,
+    focus_delay_ms: u64,
 }
 
 impl Default for Config {
@@ -24,6 +27,8 @@ impl Default for Config {
             source: "~/.local/bin/brotab".into(),
             max_entries: 10,
             cache_ttl_secs: 5,
+            focus_class: None,
+            focus_delay_ms: 120,
         }
     }
 }
@@ -177,16 +182,87 @@ fn get_scored_matches(_state: &State, list: Vec<Browser>, query: Vec<&str>) -> V
     scored.into_iter().map(|(_, b)| b).collect()
 }
 
+fn fetch_client_browser(bin_path: &str, client_id: &str) -> Option<String> {
+    let output = Command::new(bin_path).arg("clients").output();
+
+    match output {
+        Ok(out) if out.status.success() => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            stdout.lines().find_map(|line| {
+                let mut parts = line.split('\t');
+                let id = parts.next()?.trim_end_matches('.');
+                if id == client_id {
+                    parts.nth(2).map(|s| s.to_string())
+                } else {
+                    None
+                }
+            })
+        }
+        _ => None,
+    }
+}
+
+fn get_browser_class_priority(browser_name: &str) -> &[&str] {
+    match browser_name.to_lowercase().as_str() {
+        "firefox" => &["zen", "firefox"],
+        "chrome" => &["google-chrome"],
+        "chromium" => &["chromium", "google-chrome"],
+        "brave" => &["brave-browser"],
+        "vivaldi" => &["vivaldi-stable"],
+        "microsoft-edge" | "edge" => &["microsoft-edge"],
+        _ => &[],
+    }
+}
+
+fn focus_first_matching_class(classes: &[&str]) {
+    for class in classes {
+        let output = Command::new("kdotool")
+            .args(["search", "--class", class])
+            .output();
+
+        match output {
+            Ok(out) if out.status.success() => {
+                if let Some(window_id) = String::from_utf8_lossy(&out.stdout)
+                    .lines()
+                    .next()
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                {
+                    let _ = Command::new("kdotool")
+                        .args(["windowactivate", window_id])
+                        .spawn();
+                    return;
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 #[handler]
 fn handler(selection: Match, state: &State) -> HandleResult {
     if let ROption::RSome(tab_id) = selection.description {
-        focus_to_class("firefox");
+        let tab_id_str = tab_id.to_string();
 
         let _ = anyrun_plugin::spawn_detached(
             Command::new(&state.full_path)
                 .arg("activate")
-                .arg(tab_id.to_string()),
+                .arg(tab_id_str.clone()),
         );
+
+        thread::sleep(Duration::from_millis(state.config.focus_delay_ms));
+
+        if let Some(ref class) = state.config.focus_class {
+            focus_to_class(class);
+        } else {
+            let client_prefix = tab_id_str.split('.').next();
+            if let Some(prefix) = client_prefix {
+                if let Some(browser_name) = fetch_client_browser(&state.full_path, prefix) {
+                    let candidates = get_browser_class_priority(&browser_name);
+                    focus_first_matching_class(candidates);
+                }
+            }
+        }
     }
     HandleResult::Close
 }

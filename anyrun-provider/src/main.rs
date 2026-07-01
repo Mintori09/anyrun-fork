@@ -1,7 +1,7 @@
 use anyrun_interface::{HandleResult, Match, PluginInfo, PluginRef, abi_stable};
 use anyrun_provider_ipc::{
     CONFIG_DIRS, PLUGIN_PATHS, PluginHealth, PluginHealthState, RecentMatch, Request, Response,
-    Socket,
+    Socket, is_ipc_disconnect,
 };
 use chrono::{DateTime, Utc};
 use clap::{Parser, Subcommand};
@@ -20,6 +20,10 @@ use std::time::Instant;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{Mutex, broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
+
+static TEMP_PLUGIN_COPY_COUNTER: AtomicU64 = AtomicU64::new(0);
+const RELOAD_PLUGIN_SETTLE_DELAY_MS: u64 = 50;
+const RELOAD_WATCHER_SETTLE_DELAY_MS: u64 = 100;
 
 struct PluginQueryResult {
     plugin_idx: usize,
@@ -209,6 +213,47 @@ struct State {
     plugin_dirs: Vec<PathBuf>,
     config_dir: Arc<str>,
     frecency: Arc<Mutex<FrecencyData>>,
+    plugin_specs: Vec<PathBuf>,
+    temp_so_files: Vec<PathBuf>,
+}
+
+struct TempFileCleanupGuard {
+    paths: Vec<PathBuf>,
+    keep: bool,
+}
+
+impl TempFileCleanupGuard {
+    fn new() -> Self {
+        Self {
+            paths: Vec::new(),
+            keep: false,
+        }
+    }
+
+    fn track(&mut self, path: PathBuf) {
+        self.paths.push(path);
+    }
+
+    fn into_paths(mut self) -> Vec<PathBuf> {
+        self.keep = true;
+        std::mem::take(&mut self.paths)
+    }
+}
+
+impl Drop for TempFileCleanupGuard {
+    fn drop(&mut self) {
+        if self.keep {
+            return;
+        }
+        for path in &self.paths {
+            if let Err(err) = std::fs::remove_file(path) {
+                eprintln!(
+                    "[provider] Failed to remove temp file {}: {err}",
+                    path.display()
+                );
+            }
+        }
+    }
 }
 
 fn rebuild_plugin_map(plugins: &[PluginState]) -> HashMap<String, usize> {
@@ -223,12 +268,27 @@ fn init_plugin_state(plugin: &PluginRef, config_dir: &str) {
     plugin.init()(config_dir.into());
 }
 
+fn temp_plugin_copy_name(file_name: &str) -> String {
+    let unique_suffix = TEMP_PLUGIN_COPY_COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("{file_name}.{unique_suffix}")
+}
+
 fn load_plugins(
     plugin_specs: &[PathBuf],
     plugin_dirs: &[PathBuf],
     config_dir: &str,
-) -> Result<Vec<PluginState>, String> {
+    hard_reload: bool,
+) -> Result<(Vec<PluginState>, Vec<PathBuf>), String> {
     let mut plugins = Vec::with_capacity(plugin_specs.len());
+    let mut temp_files = TempFileCleanupGuard::new();
+
+    let temp_dir = if hard_reload {
+        let dir = std::env::temp_dir().join(format!("anyrun-reload-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        Some(dir)
+    } else {
+        None
+    };
 
     for plugin_path in plugin_specs {
         let Some(path) = find_plugin(plugin_path, plugin_dirs) else {
@@ -238,28 +298,59 @@ fn load_plugins(
             ));
         };
 
-        let header = abi_stable::library::lib_header_from_path(&path)
-            .map_err(|e| format!("failed to load plugin {}: {e}", path.display()))?;
+        let load_path = if let Some(ref dir) = temp_dir {
+            let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+            let unique_name = temp_plugin_copy_name(&file_name);
+            let temp_path = dir.join(unique_name);
+            std::fs::copy(&path, &temp_path)
+                .map_err(|e| format!("failed to copy plugin {}: {e}", path.display()))?;
+            temp_files.track(temp_path.clone());
+            temp_path
+        } else {
+            path
+        };
+
+        let header = abi_stable::library::lib_header_from_path(&load_path)
+            .map_err(|e| format!("failed to load plugin {}: {e}", load_path.display()))?;
         let plugin = header
             .init_root_module::<PluginRef>()
-            .map_err(|e| format!("failed to init plugin module {}: {e}", path.display()))?;
+            .map_err(|e| format!("failed to init plugin module {}: {e}", load_path.display()))?;
 
         init_plugin_state(&plugin, config_dir);
         let info = plugin.info()();
         plugins.push(PluginState { plugin, info });
     }
 
-    Ok(plugins)
+    Ok((plugins, temp_files.into_paths()))
 }
 
 fn reload_plugin_set(
     state: &mut State,
     plugin_specs: &[PathBuf],
     plugin_dirs: &[PathBuf],
+    hard_reload: bool,
 ) -> Result<(), String> {
-    let plugins = load_plugins(plugin_specs, plugin_dirs, state.config_dir.as_ref())?;
+    let (plugins, new_temp_files) = load_plugins(
+        plugin_specs,
+        plugin_dirs,
+        state.config_dir.as_ref(),
+        hard_reload,
+    )?;
     state.plugin_map = rebuild_plugin_map(&plugins);
+
+    let old_temp = std::mem::take(&mut state.temp_so_files);
     state.plugins = plugins;
+    state.temp_so_files = new_temp_files;
+
+    for path in &old_temp {
+        if let Err(err) = std::fs::remove_file(path) {
+            eprintln!(
+                "[provider] Failed to remove temp file {}: {err}",
+                path.display()
+            );
+        }
+    }
+
     Ok(())
 }
 
@@ -440,8 +531,9 @@ async fn main() -> io::Result<()> {
 
     let config_dir_str = config_dir.to_string();
 
-    let initial_plugins =
-        load_plugins(&args.plugins, &plugin_dirs, &config_dir_str).map_err(io::Error::other)?;
+    let (initial_plugins, initial_temp_files) =
+        load_plugins(&args.plugins, &plugin_dirs, &config_dir_str, false)
+            .map_err(io::Error::other)?;
 
     let mut state = State {
         plugin_map: rebuild_plugin_map(&initial_plugins),
@@ -449,6 +541,8 @@ async fn main() -> io::Result<()> {
         plugin_dirs: plugin_dirs.clone(),
         config_dir,
         frecency,
+        plugin_specs: args.plugins.clone(),
+        temp_so_files: initial_temp_files,
     };
 
     let (reload_tx, _) = broadcast::channel::<()>(4);
@@ -535,7 +629,7 @@ async fn worker(
             req_result = socket.recv() => {
                 let request = match req_result {
                     Ok(req) => req,
-                    Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
+                    Err(e) if is_ipc_disconnect(&e) => break,
                     Err(e) => return Err(e),
                 };
 
@@ -604,16 +698,18 @@ async fn worker(
                     }
                     Request::ReloadPlugins { plugins } => {
                         stop_search_workers(&mut search_workers);
+                        // Let aborted workers unwind before replacing shared libraries.
+                        tokio::time::sleep(Duration::from_millis(RELOAD_PLUGIN_SETTLE_DELAY_MS)).await;
+
                         let reload_result = if plugins.is_empty() {
-                            for p in &mut state.plugins {
-                                init_plugin_state(&p.plugin, state.config_dir.as_ref());
-                            }
-                            Ok(())
+                            let specs = state.plugin_specs.clone();
+                            let dirs = state.plugin_dirs.clone();
+                            reload_plugin_set(state, &specs, &dirs, true)
                         } else {
                             let plugin_specs: Vec<PathBuf> =
                                 plugins.iter().map(PathBuf::from).collect();
                             let plugin_dirs = state.plugin_dirs.clone();
-                            reload_plugin_set(state, &plugin_specs, &plugin_dirs)
+                            reload_plugin_set(state, &plugin_specs, &plugin_dirs, true)
                         };
 
                         if let Err(err) = reload_result {
@@ -653,13 +749,23 @@ async fn worker(
                             }
                         }
                     }
-                    Request::Quit => return Ok(WorkerResult::Quit),
+                    Request::Quit => {
+                        for path in &state.temp_so_files {
+                            if let Err(err) = std::fs::remove_file(path) {
+                                eprintln!(
+                                    "[provider] Failed to remove temp file {}: {err}",
+                                    path.display()
+                                );
+                            }
+                        }
+                        return Ok(WorkerResult::Quit)
+                    }
                 }
             }
 
             _ = reload_rx.recv() => {
                 // If a query is in progress, delay reload slightly to avoid interrupting typing
-                tokio::time::sleep(Duration::from_millis(100)).await;
+                tokio::time::sleep(Duration::from_millis(RELOAD_WATCHER_SETTLE_DELAY_MS)).await;
                 stop_search_workers(&mut search_workers);
 
                 let mut failed = Vec::new();
@@ -1255,5 +1361,48 @@ mod tests {
         assert_eq!(max_running.load(Ordering::SeqCst), 1);
 
         handle.abort();
+    }
+
+    #[test]
+    fn test_temp_file_cleanup_guard_removes_files_when_not_disarmed() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let temp_file = temp_dir.path().join("cleanup-test.so");
+        fs::write(&temp_file, b"dummy").unwrap();
+
+        {
+            let mut guard = TempFileCleanupGuard::new();
+            guard.track(temp_file.clone());
+        }
+
+        assert!(!temp_file.exists());
+    }
+
+    #[test]
+    fn test_temp_file_cleanup_guard_keeps_files_when_disarmed() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let temp_file = temp_dir.path().join("keep-test.so");
+        fs::write(&temp_file, b"dummy").unwrap();
+
+        let kept = {
+            let mut guard = TempFileCleanupGuard::new();
+            guard.track(temp_file.clone());
+            guard.into_paths()
+        };
+
+        assert_eq!(kept, vec![temp_file.clone()]);
+        assert!(temp_file.exists());
+    }
+
+    #[test]
+    fn test_temp_plugin_copy_name_is_unique_across_calls() {
+        let a = temp_plugin_copy_name("libexample.so");
+        let b = temp_plugin_copy_name("libexample.so");
+        assert_ne!(a, b);
     }
 }

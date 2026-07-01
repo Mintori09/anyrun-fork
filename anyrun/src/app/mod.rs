@@ -123,6 +123,13 @@ impl Component for App {
                             }
                         }
                 },
+
+                #[name = "_search_progress"]
+                gtk::Box {
+                    set_css_classes: &["search-progress"],
+                    set_hexpand: true,
+                },
+
                 #[name = "_scroll"]
                 gtk::ScrolledWindow {
                     set_vexpand: true,
@@ -239,5 +246,8 @@ impl AppWidgets {
     }
     pub(super) fn results_count(&self) -> &gtk::Label {
         &self._results_count
+    }
+    pub(super) fn search_progress(&self) -> &gtk::Box {
+        &self._search_progress
     }
 }
