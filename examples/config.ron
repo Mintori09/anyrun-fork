@@ -30,6 +30,9 @@ Config(
   // Close window when a click outside the main box is received
   close_on_click: false,
 
+  // Press Esc once to clear search text, twice to close
+  double_esc_to_close: false,
+
   // Show search results immediately when Anyrun starts
   show_results_immediately: false,
 

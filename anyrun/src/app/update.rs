@@ -73,6 +73,13 @@ impl App {
                 }
 
                 if let Some(action) = self.resolve_action_for_key(key, modifier) {
+                    if action == Action::Close && self.config.double_esc_to_close {
+                        let text = widgets.entry().text();
+                        if !text.is_empty() {
+                            widgets.entry().set_text("");
+                            return;
+                        }
+                    }
                     sender.input(AppMsg::Action(action));
                 }
             }

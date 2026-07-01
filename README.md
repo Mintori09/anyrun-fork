@@ -137,6 +137,7 @@ Key options:
 - `layer`: Window layer — `Background`, `Bottom`, `Top`, or `Overlay`
 - `hide_plugin_info`: Hide the plugin info panel
 - `close_on_click`: Close on outside click
+- `double_esc_to_close`: Press Esc once to clear search text, twice to close
 - `show_results_immediately`: Show results on open
 - `max_entries`: Global result limit (None = unlimited)
 - `plugins`: Ordered list of plugin `.so` files (order = priority)
