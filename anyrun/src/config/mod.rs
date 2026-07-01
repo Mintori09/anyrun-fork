@@ -211,6 +211,35 @@ impl Default for Config {
     }
 }
 
+impl ConfigArgs {
+    pub fn has_plugins(&self) -> bool {
+        self.plugins.is_some()
+    }
+}
+
+impl Default for ConfigArgs {
+    fn default() -> Self {
+        Self {
+            plugins: None,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            provider: None,
+            hide_icons: None,
+            hide_plugin_info: None,
+            ignore_exclusive_zones: None,
+            close_on_click: None,
+            close_on_unfocus: None,
+            double_esc_to_close: None,
+            show_results_immediately: None,
+            max_entries: None,
+            layer: None,
+            keyboard_mode: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,6 +260,38 @@ mod tests {
         assert!(matches!(app_cfg.width, RelativeNum::Absolute(800)));
         assert!(matches!(app_cfg.y, RelativeNum::Fraction(y) if (y - 0.5).abs() < f64::EPSILON));
         assert!(app_cfg.hide_plugin_info);
+    }
+
+    #[test]
+    fn has_plugins_true_when_specified() {
+        let args = ConfigArgs {
+            plugins: Some(vec!["libfoo.so".into()]),
+            ..Default::default()
+        };
+        assert!(args.has_plugins());
+    }
+
+    #[test]
+    fn has_plugins_false_when_unspecified() {
+        let args = ConfigArgs {
+            plugins: None,
+            ..Default::default()
+        };
+        assert!(!args.has_plugins());
+    }
+
+    #[test]
+    fn merge_opt_overrides_plugins() {
+        let mut config = Config::default();
+        let default_plugins = config.plugins.clone();
+        assert_eq!(default_plugins.len(), 4);
+
+        let args = ConfigArgs {
+            plugins: Some(vec!["libcustom.so".into()]),
+            ..Default::default()
+        };
+        config.merge_opt(args);
+        assert_eq!(config.plugins, vec![PathBuf::from("libcustom.so")]);
     }
 
     #[test]

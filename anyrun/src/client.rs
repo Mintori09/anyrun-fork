@@ -24,6 +24,8 @@ pub fn run_client(args: Args) {
     let duration = time.elapsed();
     println!("[Call dbus at {:?}]", duration);
 
+    let static_load = args.config.has_plugins();
+
     let read_init_data = || {
         let mut stdin = Vec::new();
         if !io::stdin().is_terminal() {
@@ -51,7 +53,7 @@ pub fn run_client(args: Args) {
     let duration = time.elapsed();
     println!("[Read init Data at {:?}]", duration);
 
-    if app.is_remote() {
+    if !static_load && app.is_remote() {
         let conn = app.dbus_connection().expect("No D-Bus connection");
         let payload = read_init_data();
 
