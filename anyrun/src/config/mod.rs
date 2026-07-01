@@ -263,6 +263,90 @@ mod tests {
     }
 
     #[test]
+    fn has_plugins_empty_some() {
+        let args = ConfigArgs {
+            plugins: Some(vec![]),
+            ..Default::default()
+        };
+        assert!(args.has_plugins());
+    }
+
+    #[test]
+    fn has_plugins_default_none() {
+        assert!(!ConfigArgs::default().has_plugins());
+    }
+
+    #[test]
+    fn has_plugins_multiple() {
+        let args = ConfigArgs {
+            plugins: Some(vec!["a.so".into(), "b.so".into(), "c.so".into()]),
+            ..Default::default()
+        };
+        assert!(args.has_plugins());
+    }
+
+    #[test]
+    fn merge_opt_none_keeps_existing() {
+        let mut config = Config::default();
+        config.plugins = vec!["existing.so".into()];
+        let args = ConfigArgs {
+            plugins: None,
+            ..Default::default()
+        };
+        config.merge_opt(args);
+        assert_eq!(config.plugins, vec![PathBuf::from("existing.so")]);
+    }
+
+    #[test]
+    fn merge_opt_default_noop() {
+        let config = Config::default();
+        let original = config.plugins.clone();
+        let mut config = config;
+        config.merge_opt(ConfigArgs::default());
+        assert_eq!(config.plugins, original);
+    }
+
+    #[test]
+    fn merge_opt_absolute_path() {
+        let mut config = Config::default();
+        let args = ConfigArgs {
+            plugins: Some(vec!["/usr/lib/anyrun/foo.so".into()]),
+            ..Default::default()
+        };
+        config.merge_opt(args);
+        assert_eq!(config.plugins, vec![PathBuf::from("/usr/lib/anyrun/foo.so")]);
+    }
+
+    #[test]
+    fn merge_opt_relative_path() {
+        let mut config = Config::default();
+        let args = ConfigArgs {
+            plugins: Some(vec!["./plugins/foo.so".into()]),
+            ..Default::default()
+        };
+        config.merge_opt(args);
+        assert_eq!(config.plugins, vec![PathBuf::from("./plugins/foo.so")]);
+    }
+
+    #[test]
+    fn merge_opt_mixed_paths() {
+        let mut config = Config::default();
+        let args = ConfigArgs {
+            plugins: Some(vec!["./rel.so".into(), "/abs.so".into(), "../up.so".into()]),
+            ..Default::default()
+        };
+        config.merge_opt(args);
+        assert_eq!(
+            config.plugins,
+            vec![
+                PathBuf::from("./rel.so"),
+                PathBuf::from("/abs.so"),
+                PathBuf::from("../up.so"),
+            ]
+        );
+    }
+
+    #[test]
     fn has_plugins_true_when_specified() {
         let args = ConfigArgs {
             plugins: Some(vec!["libfoo.so".into()]),

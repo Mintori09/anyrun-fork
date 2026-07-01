@@ -10,12 +10,21 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 
+pub(crate) fn determine_app_flags(static_load: bool) -> gio::ApplicationFlags {
+    if static_load {
+        gio::ApplicationFlags::NON_UNIQUE
+    } else {
+        gio::ApplicationFlags::FLAGS_NONE
+    }
+}
+
 pub fn run_client(args: Args) {
     let time = Instant::now();
     let duration = time.elapsed();
     println!("[Start Application at {:?}]", duration);
 
-    let app = gtk4::Application::new(Some("org.anyrun.anyrun"), gio::ApplicationFlags::FLAGS_NONE);
+    let static_load = args.config.has_plugins();
+    let app = gtk4::Application::new(Some("org.anyrun.anyrun"), determine_app_flags(static_load));
     if let Err(e) = app.register(None::<&gio::Cancellable>) {
         eprintln!("Registration error: {e}");
         return;
@@ -23,8 +32,6 @@ pub fn run_client(args: Args) {
 
     let duration = time.elapsed();
     println!("[Call dbus at {:?}]", duration);
-
-    let static_load = args.config.has_plugins();
 
     let read_init_data = || {
         let mut stdin = Vec::new();
@@ -106,5 +113,27 @@ pub fn run_client(args: Args) {
             controller.sender().emit(app::AppMsg::Activate(None));
         });
         app.run_with_args(&Vec::<String>::new());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::determine_app_flags;
+    use gtk4::gio;
+
+    #[test]
+    fn static_load_flag() {
+        assert_eq!(
+            determine_app_flags(true),
+            gio::ApplicationFlags::NON_UNIQUE,
+        );
+    }
+
+    #[test]
+    fn normal_flag() {
+        assert_eq!(
+            determine_app_flags(false),
+            gio::ApplicationFlags::FLAGS_NONE,
+        );
     }
 }

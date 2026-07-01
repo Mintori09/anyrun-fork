@@ -191,6 +191,7 @@ fn is_expected_ipc_disconnect(err: &io::Error) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{connect_with_retry, is_expected_ipc_disconnect};
+    use std::ffi::OsStr;
     use std::io;
     use std::path::PathBuf;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -271,6 +272,102 @@ mod tests {
         assert!(args.contains(&"libbar.so".to_string()));
         assert!(args.contains(&"connect-to".to_string()));
         assert!(args.contains(&"/tmp/anyrun.sock".to_string()));
+    }
+
+    #[test]
+    fn build_command_single_plugin() {
+        let cmd = super::build_provider_command(
+            &PathBuf::from("anyrun-provider"),
+            "/tmp/anyrun-config",
+            &[PathBuf::from("libfoo.so")],
+            "/tmp/anyrun.sock",
+            vec![],
+        );
+        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let p_count = args.iter().filter(|a| *a == "-p").count();
+        assert_eq!(p_count, 1);
+        assert!(args.contains(&"libfoo.so".to_string()));
+    }
+
+    #[test]
+    fn build_command_absolute_path() {
+        let cmd = super::build_provider_command(
+            &PathBuf::from("anyrun-provider"),
+            "/tmp/anyrun-config",
+            &[PathBuf::from("/usr/lib/anyrun/foo.so")],
+            "/tmp/anyrun.sock",
+            vec![],
+        );
+        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let idx = args.iter().position(|a| a == "-p").unwrap();
+        assert_eq!(args[idx + 1], "/usr/lib/anyrun/foo.so");
+    }
+
+    #[test]
+    fn build_command_relative_path() {
+        let cmd = super::build_provider_command(
+            &PathBuf::from("anyrun-provider"),
+            "/tmp/anyrun-config",
+            &[PathBuf::from("./plugins/foo.so")],
+            "/tmp/anyrun.sock",
+            vec![],
+        );
+        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let idx = args.iter().position(|a| a == "-p").unwrap();
+        assert_eq!(args[idx + 1], "./plugins/foo.so");
+    }
+
+    #[test]
+    fn build_command_path_dotdot() {
+        let cmd = super::build_provider_command(
+            &PathBuf::from("anyrun-provider"),
+            "/tmp/anyrun-config",
+            &[PathBuf::from("../anyrun/plugins/foo.so")],
+            "/tmp/anyrun.sock",
+            vec![],
+        );
+        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let idx = args.iter().position(|a| a == "-p").unwrap();
+        assert_eq!(args[idx + 1], "../anyrun/plugins/foo.so");
+    }
+
+    #[test]
+    fn build_command_path_with_spaces() {
+        let cmd = super::build_provider_command(
+            &PathBuf::from("anyrun-provider"),
+            "/tmp/anyrun-config",
+            &[PathBuf::from("lib/my plugin.so")],
+            "/tmp/anyrun.sock",
+            vec![],
+        );
+        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let idx = args.iter().position(|a| a == "-p").unwrap();
+        assert_eq!(args[idx + 1], "lib/my plugin.so");
+    }
+
+    #[test]
+    fn build_command_includes_env() {
+        let cmd = super::build_provider_command(
+            &PathBuf::from("anyrun-provider"),
+            "/tmp/anyrun-config",
+            &[],
+            "/tmp/anyrun.sock",
+            vec![("KEY".to_string(), "val".to_string())],
+        );
+        let envs: Vec<_> = cmd.get_envs().collect();
+        assert!(envs.contains(&(OsStr::new("KEY"), Some(OsStr::new("val")))));
+    }
+
+    #[test]
+    fn build_command_uses_correct_program() {
+        let cmd = super::build_provider_command(
+            &PathBuf::from("/custom/path/anyrun-provider"),
+            "/tmp/anyrun-config",
+            &[],
+            "/tmp/anyrun.sock",
+            vec![],
+        );
+        assert_eq!(cmd.get_program(), OsStr::new("/custom/path/anyrun-provider"));
     }
 
     #[test]
