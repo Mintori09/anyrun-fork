@@ -20,11 +20,25 @@ pub(crate) fn build_provider_command(
     socket_path: &str,
     env: Vec<(String, String)>,
 ) -> Command {
+    let cwd = std::env::current_dir().ok();
+    let resolved_plugins: Vec<PathBuf> = plugins
+        .iter()
+        .map(|p| {
+            if p.is_relative() {
+                cwd.as_ref()
+                    .map(|cwd| cwd.join(p))
+                    .unwrap_or_else(|| p.clone())
+            } else {
+                p.clone()
+            }
+        })
+        .collect();
+
     let mut cmd = Command::new(provider_path);
     cmd.stdin(Stdio::piped())
         .arg("--config-dir")
         .arg(config_dir)
-        .args(plugins.iter().flat_map(|plugin| [PathBuf::from("-p"), plugin.to_owned()]))
+        .args(resolved_plugins.iter().flat_map(|plugin| [PathBuf::from("-p"), plugin.to_owned()]))
         .arg("connect-to")
         .arg(socket_path)
         .envs(env);
@@ -268,8 +282,8 @@ mod tests {
         assert!(args.contains(&"--config-dir".to_string()));
         assert!(args.contains(&"/tmp/anyrun-config".to_string()));
         assert!(args.contains(&"-p".to_string()));
-        assert!(args.contains(&"libfoo.so".to_string()));
-        assert!(args.contains(&"libbar.so".to_string()));
+        assert!(args.iter().any(|a| a.ends_with("libfoo.so")));
+        assert!(args.iter().any(|a| a.ends_with("libbar.so")));
         assert!(args.contains(&"connect-to".to_string()));
         assert!(args.contains(&"/tmp/anyrun.sock".to_string()));
     }
@@ -286,7 +300,7 @@ mod tests {
         let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
         let p_count = args.iter().filter(|a| *a == "-p").count();
         assert_eq!(p_count, 1);
-        assert!(args.contains(&"libfoo.so".to_string()));
+        assert!(args.iter().any(|a| a.ends_with("libfoo.so")));
     }
 
     #[test]
@@ -314,7 +328,7 @@ mod tests {
         );
         let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
         let idx = args.iter().position(|a| a == "-p").unwrap();
-        assert_eq!(args[idx + 1], "./plugins/foo.so");
+        assert!(args[idx + 1].starts_with('/'), "relative path should be resolved to absolute: {}", args[idx + 1]);
     }
 
     #[test]
@@ -328,7 +342,7 @@ mod tests {
         );
         let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
         let idx = args.iter().position(|a| a == "-p").unwrap();
-        assert_eq!(args[idx + 1], "../anyrun/plugins/foo.so");
+        assert!(args[idx + 1].starts_with('/'), "relative path should be resolved to absolute: {}", args[idx + 1]);
     }
 
     #[test]
@@ -342,7 +356,7 @@ mod tests {
         );
         let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
         let idx = args.iter().position(|a| a == "-p").unwrap();
-        assert_eq!(args[idx + 1], "lib/my plugin.so");
+        assert!(args[idx + 1].starts_with('/'), "relative path should be resolved to absolute: {}", args[idx + 1]);
     }
 
     #[test]
@@ -381,5 +395,33 @@ mod tests {
         );
         let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
         assert!(!args.iter().any(|a| a == "-p"));
+    }
+
+    #[test]
+    fn build_command_relative_path_resolved() {
+        let cmd = super::build_provider_command(
+            &PathBuf::from("anyrun-provider"),
+            "/tmp/anyrun-config",
+            &[PathBuf::from("./plugins/foo.so")],
+            "/tmp/anyrun.sock",
+            vec![],
+        );
+        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let idx = args.iter().position(|a| a == "-p").unwrap();
+        assert!(args[idx + 1].starts_with('/'), "relative path should be resolved to absolute: {}", args[idx + 1]);
+    }
+
+    #[test]
+    fn build_command_absolute_path_unchanged() {
+        let cmd = super::build_provider_command(
+            &PathBuf::from("anyrun-provider"),
+            "/tmp/anyrun-config",
+            &[PathBuf::from("/usr/lib/foo.so")],
+            "/tmp/anyrun.sock",
+            vec![],
+        );
+        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let idx = args.iter().position(|a| a == "-p").unwrap();
+        assert_eq!(args[idx + 1], "/usr/lib/foo.so");
     }
 }
