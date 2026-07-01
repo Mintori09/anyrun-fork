@@ -1,7 +1,7 @@
 use gtk4::gdk;
 use serde::{de::Visitor, Deserialize, Deserializer};
 
-#[derive(Deserialize, Debug, Clone, Copy)]
+#[derive(Deserialize, Debug, Clone, Copy, PartialEq)]
 pub enum Action {
     Close,
     Select,
