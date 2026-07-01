@@ -188,13 +188,13 @@ pub fn init(config_dir: RString) -> State {
 
         search_entries.push(SearchableEntry {
             id,
-            name_na: remove_accents(&name_lc),
+            name_na: remove_accents(&name_lc).to_string(),
             name_lc,
-            title_na: remove_accents(&title_lc),
+            title_na: remove_accents(&title_lc).to_string(),
             title_lc,
-            desc_na: desc_lc.as_ref().map(|d| remove_accents(d)),
+            desc_na: desc_lc.as_ref().map(|d| remove_accents(d).to_string()),
             desc_lc,
-            keywords_na: keywords_lc.iter().map(|k| remove_accents(k)).collect(),
+            keywords_na: keywords_lc.iter().map(|k| remove_accents(k).to_string()).collect(),
             keywords_lc,
             offset: entry.offset,
             is_action: entry.is_action,
@@ -220,7 +220,7 @@ pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
         .split_whitespace()
         .map(|s| s.to_string())
         .collect();
-    let tokens_na: Vec<String> = tokens.iter().map(|t| remove_accents(t)).collect();
+    let tokens_na: Vec<String> = tokens.iter().map(|t| remove_accents(t).to_string()).collect();
 
     const ACTION_VERBS: &[&str] = &["quit", "close", "exit", "kill", "stop", "restart"];
     let has_action_verb = tokens.iter().any(|t| ACTION_VERBS.contains(&t.as_str()));
