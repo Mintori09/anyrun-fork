@@ -13,6 +13,24 @@ use tokio::{net::UnixListener, sync::mpsc::Receiver};
 
 use crate::config::Config;
 
+pub(crate) fn build_provider_command(
+    provider_path: &Path,
+    config_dir: &str,
+    plugins: &[PathBuf],
+    socket_path: &str,
+    env: Vec<(String, String)>,
+) -> Command {
+    let mut cmd = Command::new(provider_path);
+    cmd.stdin(Stdio::piped())
+        .arg("--config-dir")
+        .arg(config_dir)
+        .args(plugins.iter().flat_map(|plugin| [PathBuf::from("-p"), plugin.to_owned()]))
+        .arg("connect-to")
+        .arg(socket_path)
+        .envs(env);
+    cmd
+}
+
 pub fn worker_spawn(
     config: Arc<Config>,
     config_dir: Option<String>,
@@ -36,20 +54,15 @@ pub fn worker_spawn(
             let _ = fs::remove_file(&socket_path);
             let listener = UnixListener::bind(&socket_path).unwrap();
 
-            let mut child = match Command::new(&config.provider)
-                .stdin(Stdio::piped())
-                .arg("--config-dir")
-                .arg(config_dir.unwrap_or(ipc::CONFIG_DIRS[0].to_string()))
-                .args(
-                    config
-                        .plugins
-                        .iter()
-                        .flat_map(|plugin| [PathBuf::from("-p"), plugin.to_owned()]),
-                )
-                .arg("connect-to")
-                .arg(&socket_path)
-                .envs(env)
-                .spawn()
+            let config_dir = config_dir.unwrap_or_else(|| ipc::CONFIG_DIRS[0].to_string());
+            let mut child = match build_provider_command(
+                &config.provider,
+                &config_dir,
+                &config.plugins,
+                &socket_path,
+                env,
+            )
+            .spawn()
             {
                 Ok(child) => child,
                 Err(why) => match why.kind() {
@@ -239,5 +252,37 @@ mod tests {
 
         let invalid = io::Error::new(io::ErrorKind::InvalidData, "invalid");
         assert!(!is_expected_ipc_disconnect(&invalid));
+    }
+
+    #[test]
+    fn build_command_includes_plugins() {
+        let cmd = super::build_provider_command(
+            &PathBuf::from("anyrun-provider"),
+            "/tmp/anyrun-config",
+            &[PathBuf::from("libfoo.so"), PathBuf::from("libbar.so")],
+            "/tmp/anyrun.sock",
+            vec![],
+        );
+        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        assert!(args.contains(&"--config-dir".to_string()));
+        assert!(args.contains(&"/tmp/anyrun-config".to_string()));
+        assert!(args.contains(&"-p".to_string()));
+        assert!(args.contains(&"libfoo.so".to_string()));
+        assert!(args.contains(&"libbar.so".to_string()));
+        assert!(args.contains(&"connect-to".to_string()));
+        assert!(args.contains(&"/tmp/anyrun.sock".to_string()));
+    }
+
+    #[test]
+    fn build_command_no_plugins_no_p_flags() {
+        let cmd = super::build_provider_command(
+            &PathBuf::from("anyrun-provider"),
+            "/tmp/anyrun-config",
+            &[],
+            "/tmp/anyrun.sock",
+            vec![],
+        );
+        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        assert!(!args.iter().any(|a| a == "-p"));
     }
 }
