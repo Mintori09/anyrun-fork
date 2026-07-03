@@ -13,6 +13,17 @@ use tokio::{net::UnixListener, sync::mpsc::Receiver};
 
 use crate::config::Config;
 
+fn expand_tilde(path: &Path) -> PathBuf {
+    if let Some(path_str) = path.to_str() {
+        if path_str.starts_with("~/") {
+            if let Ok(home) = std::env::var("HOME") {
+                return PathBuf::from(path_str.replacen('~', &home, 1));
+            }
+        }
+    }
+    path.to_path_buf()
+}
+
 pub(crate) fn build_provider_command(
     provider_path: &Path,
     config_dir: &str,
@@ -24,21 +35,26 @@ pub(crate) fn build_provider_command(
     let resolved_plugins: Vec<PathBuf> = plugins
         .iter()
         .map(|p| {
+            let p = expand_tilde(p);
             if p.is_relative() {
                 cwd.as_ref()
-                    .map(|cwd| cwd.join(p))
+                    .map(|cwd| cwd.join(&p))
                     .unwrap_or_else(|| p.clone())
             } else {
-                p.clone()
+                p
             }
         })
         .collect();
 
-    let mut cmd = Command::new(provider_path);
+    let mut cmd = Command::new(expand_tilde(provider_path));
     cmd.stdin(Stdio::piped())
         .arg("--config-dir")
         .arg(config_dir)
-        .args(resolved_plugins.iter().flat_map(|plugin| [PathBuf::from("-p"), plugin.to_owned()]))
+        .args(
+            resolved_plugins
+                .iter()
+                .flat_map(|plugin| [PathBuf::from("-p"), plugin.to_owned()]),
+        )
         .arg("connect-to")
         .arg(socket_path)
         .envs(env);
@@ -278,7 +294,10 @@ mod tests {
             "/tmp/anyrun.sock",
             vec![],
         );
-        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let args: Vec<_> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
         assert!(args.contains(&"--config-dir".to_string()));
         assert!(args.contains(&"/tmp/anyrun-config".to_string()));
         assert!(args.contains(&"-p".to_string()));
@@ -297,7 +316,10 @@ mod tests {
             "/tmp/anyrun.sock",
             vec![],
         );
-        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let args: Vec<_> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
         let p_count = args.iter().filter(|a| *a == "-p").count();
         assert_eq!(p_count, 1);
         assert!(args.iter().any(|a| a.ends_with("libfoo.so")));
@@ -312,7 +334,10 @@ mod tests {
             "/tmp/anyrun.sock",
             vec![],
         );
-        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let args: Vec<_> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
         let idx = args.iter().position(|a| a == "-p").unwrap();
         assert_eq!(args[idx + 1], "/usr/lib/anyrun/foo.so");
     }
@@ -326,9 +351,16 @@ mod tests {
             "/tmp/anyrun.sock",
             vec![],
         );
-        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let args: Vec<_> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
         let idx = args.iter().position(|a| a == "-p").unwrap();
-        assert!(args[idx + 1].starts_with('/'), "relative path should be resolved to absolute: {}", args[idx + 1]);
+        assert!(
+            args[idx + 1].starts_with('/'),
+            "relative path should be resolved to absolute: {}",
+            args[idx + 1]
+        );
     }
 
     #[test]
@@ -340,9 +372,16 @@ mod tests {
             "/tmp/anyrun.sock",
             vec![],
         );
-        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let args: Vec<_> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
         let idx = args.iter().position(|a| a == "-p").unwrap();
-        assert!(args[idx + 1].starts_with('/'), "relative path should be resolved to absolute: {}", args[idx + 1]);
+        assert!(
+            args[idx + 1].starts_with('/'),
+            "relative path should be resolved to absolute: {}",
+            args[idx + 1]
+        );
     }
 
     #[test]
@@ -354,9 +393,16 @@ mod tests {
             "/tmp/anyrun.sock",
             vec![],
         );
-        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let args: Vec<_> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
         let idx = args.iter().position(|a| a == "-p").unwrap();
-        assert!(args[idx + 1].starts_with('/'), "relative path should be resolved to absolute: {}", args[idx + 1]);
+        assert!(
+            args[idx + 1].starts_with('/'),
+            "relative path should be resolved to absolute: {}",
+            args[idx + 1]
+        );
     }
 
     #[test]
@@ -381,7 +427,10 @@ mod tests {
             "/tmp/anyrun.sock",
             vec![],
         );
-        assert_eq!(cmd.get_program(), OsStr::new("/custom/path/anyrun-provider"));
+        assert_eq!(
+            cmd.get_program(),
+            OsStr::new("/custom/path/anyrun-provider")
+        );
     }
 
     #[test]
@@ -393,7 +442,10 @@ mod tests {
             "/tmp/anyrun.sock",
             vec![],
         );
-        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let args: Vec<_> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
         assert!(!args.iter().any(|a| a == "-p"));
     }
 
@@ -406,9 +458,16 @@ mod tests {
             "/tmp/anyrun.sock",
             vec![],
         );
-        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let args: Vec<_> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
         let idx = args.iter().position(|a| a == "-p").unwrap();
-        assert!(args[idx + 1].starts_with('/'), "relative path should be resolved to absolute: {}", args[idx + 1]);
+        assert!(
+            args[idx + 1].starts_with('/'),
+            "relative path should be resolved to absolute: {}",
+            args[idx + 1]
+        );
     }
 
     #[test]
@@ -420,7 +479,10 @@ mod tests {
             "/tmp/anyrun.sock",
             vec![],
         );
-        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let args: Vec<_> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
         let idx = args.iter().position(|a| a == "-p").unwrap();
         assert_eq!(args[idx + 1], "/usr/lib/foo.so");
     }

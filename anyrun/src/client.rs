@@ -24,16 +24,8 @@ pub fn run_client(args: Args) {
     println!("[Start Application at {:?}]", duration);
 
     let static_load = args.config.has_plugins();
-    let app = gtk4::Application::new(Some("org.anyrun.anyrun"), determine_app_flags(static_load));
-    if let Err(e) = app.register(None::<&gio::Cancellable>) {
-        eprintln!("Registration error: {e}");
-        return;
-    }
 
-    let duration = time.elapsed();
-    println!("[Call dbus at {:?}]", duration);
-
-    let read_init_data = || {
+    let read_init_data = |args: Args| {
         let mut stdin = Vec::new();
         if !io::stdin().is_terminal() {
             io::stdin()
@@ -57,12 +49,57 @@ pub fn run_client(args: Args) {
         app::AppInit { args, stdin, env }
     };
 
+    if !static_load {
+        if let Ok(conn) = gio::bus_get_sync(gio::BusType::Session, None::<&gio::Cancellable>) {
+            let payload = read_init_data(args.clone());
+            let serialized = serde_json::to_vec(&payload).unwrap();
+            let bytes = glib::Bytes::from_owned(serialized);
+            let msg = glib::Variant::from_bytes::<(Vec<u8>,)>(&bytes);
+
+            match conn.call_sync(
+                Some("org.anyrun.anyrun"),
+                "/org/anyrun/anyrun",
+                "org.anyrun.Anyrun",
+                "Show",
+                Some(&msg),
+                None,
+                gio::DBusCallFlags::NO_AUTO_START,
+                -1,
+                None::<&gio::Cancellable>,
+            ) {
+                Ok(val) => {
+                    if let Some(b) = val.child_value(0).get::<Vec<u8>>() {
+                        if let Ok(app::PostRunAction::Stdout(out_data)) =
+                            serde_json::from_slice::<app::PostRunAction>(&b)
+                        {
+                            let mut out = io::stdout().lock();
+                            let _ = out.write_all(&out_data);
+                            let _ = out.flush();
+                        }
+                    }
+                    let duration = time.elapsed();
+                    println!("[Client finished via sync IPC at {:?}]", duration);
+                    return;
+                }
+                Err(_err) => {
+                    // Daemon is not running or failed, fallback to starting as primary instance
+                }
+            }
+        }
+    }
+
+    let app = gtk4::Application::new(Some("org.anyrun.anyrun"), determine_app_flags(static_load));
+    if let Err(e) = app.register(None::<&gio::Cancellable>) {
+        eprintln!("Registration error: {e}");
+        return;
+    }
+
     let duration = time.elapsed();
-    println!("[Read init Data at {:?}]", duration);
+    println!("[Call dbus at {:?}]", duration);
 
     if !static_load && app.is_remote() {
         let conn = app.dbus_connection().expect("No D-Bus connection");
-        let payload = read_init_data();
+        let payload = read_init_data(args);
 
         let serialized = serde_json::to_vec(&payload).unwrap();
         let bytes = glib::Bytes::from_owned(serialized);
@@ -101,7 +138,7 @@ pub fn run_client(args: Args) {
 
         main_loop.run();
     } else {
-        let shared_init = Arc::new(read_init_data());
+        let shared_init = Arc::new(read_init_data(args));
 
         app.connect_activate(move |app| {
             let controller = app::App::launch(app, (*shared_init).clone(), None, None);
@@ -123,10 +160,7 @@ mod tests {
 
     #[test]
     fn static_load_flag() {
-        assert_eq!(
-            determine_app_flags(true),
-            gio::ApplicationFlags::NON_UNIQUE,
-        );
+        assert_eq!(determine_app_flags(true), gio::ApplicationFlags::NON_UNIQUE,);
     }
 
     #[test]
