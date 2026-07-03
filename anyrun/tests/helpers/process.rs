@@ -32,10 +32,11 @@ impl DaemonProcess {
         extra_env: Vec<(&str, &str)>,
     ) -> Self {
         let mut cmd = Command::new(anyrun_bin());
-        cmd.args(["daemon"])
-            .env("DBUS_SESSION_BUS_ADDRESS", &dbus_address)
-            .arg("--config-dir")
+        cmd.arg("--config-dir")
             .arg(test_dir.config_dir())
+            .arg("daemon")
+            .env("DBUS_SESSION_BUS_ADDRESS", &dbus_address)
+            .env("XDG_RUNTIME_DIR", test_dir.runtime_dir())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
 
