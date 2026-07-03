@@ -15,9 +15,9 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            prefix: "w ".into(),
+            prefix: "".into(),
             max_entries: 15,
-            show_results_immediately: false,
+            show_results_immediately: true,
             cache_ttl_secs: 5,
             exclude_classes: vec!["plasmashell".into()],
             backend: None,
