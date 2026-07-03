@@ -59,26 +59,19 @@ pub struct DaemonState {
 }
 
 pub fn fast_ipc_call(method: &'static str) {
-    gio::bus_get(
-        gio::BusType::Session,
-        None::<&gio::Cancellable>,
-        move |res| {
-            if let Ok(conn) = res {
-                conn.call(
-                    Some("org.anyrun.anyrun"),
-                    "/org/anyrun/anyrun",
-                    "org.anyrun.Anyrun",
-                    method,
-                    None,
-                    None,
-                    gio::DBusCallFlags::NO_AUTO_START,
-                    1_000,
-                    None::<&gio::Cancellable>,
-                    |_| {},
-                );
-            }
-        },
-    );
+    if let Ok(conn) = gio::bus_get_sync(gio::BusType::Session, None::<&gio::Cancellable>) {
+        let _ = conn.call_sync(
+            Some("org.anyrun.anyrun"),
+            "/org/anyrun/anyrun",
+            "org.anyrun.Anyrun",
+            method,
+            None,
+            None,
+            gio::DBusCallFlags::NO_AUTO_START,
+            1_000,
+            None::<&gio::Cancellable>,
+        );
+    }
 }
 
 pub fn setup_dbus(app: &gtk4::Application, state: Rc<RefCell<DaemonState>>) {
