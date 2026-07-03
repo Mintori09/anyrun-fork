@@ -40,8 +40,9 @@ pub fn provider_bin() -> PathBuf {
 }
 
 pub fn apply_headless_env(cmd: &mut Command) -> &mut Command {
-    cmd.env("GDK_BACKEND", "headless")
-        .env("GSK_RENDERER", "cairo")
+    cmd.env("GSK_RENDERER", "cairo")
         .env("GTK_A11Y", "none")
         .env("NO_AT_BRIDGE", "1")
+        .env("GTK_USE_PORTAL", "0")
+        .env("GIO_USE_PORTALS", "0")
 }
