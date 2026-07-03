@@ -1,19 +1,28 @@
-use std::io::BufRead;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// Start a private dbus-daemon --session --print-address --nofork.
+/// Start a private dbus-daemon --session --print-address=1 --nofork.
 /// Returns (child_process, dbus_address).
 pub fn start_private_dbus() -> (Child, String) {
     let mut child = Command::new("dbus-daemon")
-        .args(["--session", "--print-address", "--nofork"])
+        .args(["--session", "--print-address=1", "--nofork"])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
         .expect("Failed to start dbus-daemon");
 
+    use std::io::BufRead;
     let reader = std::io::BufReader::new(child.stdout.take().unwrap());
     let addr = reader.lines().next().unwrap().unwrap();
+
+    assert!(
+        addr.starts_with("unix:path=") || addr.starts_with("unix:abstract="),
+        "Unexpected dbus address format: {}",
+        addr
+    );
+
+    // BufReader drops here, closing the stdout pipe.
+    // dbus-daemon --nofork handles SIGPIPE gracefully.
     (child, addr)
 }
 
