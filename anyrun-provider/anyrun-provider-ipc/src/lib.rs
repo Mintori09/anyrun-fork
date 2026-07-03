@@ -137,6 +137,7 @@ pub enum Error {
 pub struct Socket {
     pub inner: BufReader<UnixStream>,
     send_buf: Vec<u8>,
+    recv_buf: Vec<u8>,
 }
 
 impl Socket {
@@ -146,6 +147,7 @@ impl Socket {
         Self {
             inner,
             send_buf: Vec::with_capacity(4096),
+            recv_buf: Vec::with_capacity(4096),
         }
     }
 
@@ -169,9 +171,9 @@ impl Socket {
                 "frame too large",
             ));
         }
-        let mut buf = vec![0u8; len];
-        self.inner.read_exact(&mut buf).await?;
-        bincode::deserialize::<T>(&buf).map_err(|e| match *e {
+        self.recv_buf.resize(len, 0);
+        self.inner.read_exact(&mut self.recv_buf[..len]).await?;
+        bincode::deserialize::<T>(&self.recv_buf[..len]).map_err(|e| match *e {
             bincode::ErrorKind::Io(io_err) => io_err,
             other => io::Error::other(Box::new(other)),
         })
