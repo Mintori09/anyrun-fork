@@ -51,43 +51,59 @@ pub fn run_client(args: Args) {
 
     if !static_load {
         if let Ok(conn) = gio::bus_get_sync(gio::BusType::Session, None::<&gio::Cancellable>) {
-            let payload = read_init_data(args.clone());
-            let serialized = serde_json::to_vec(&payload).unwrap();
-            let bytes = glib::Bytes::from_owned(serialized);
-            let msg = glib::Variant::from_bytes::<(Vec<u8>,)>(&bytes);
-
-            let dbus_connect_duration = time.elapsed();
-            println!("[D-Bus connection established at {:?}]", dbus_connect_duration);
-
-            match conn.call_sync(
-                Some("org.anyrun.anyrun"),
-                "/org/anyrun/anyrun",
-                "org.anyrun.Anyrun",
-                "Show",
-                Some(&msg),
+            let params = ("org.anyrun.anyrun",).to_variant();
+            let has_owner = conn.call_sync(
+                Some("org.freedesktop.DBus"),
+                "/org/freedesktop/DBus",
+                "org.freedesktop.DBus",
+                "GetNameOwner",
+                Some(&params),
                 None,
                 gio::DBusCallFlags::NO_AUTO_START,
-                -1,
+                1000,
                 None::<&gio::Cancellable>,
-            ) {
-                Ok(val) => {
-                    let call_duration = time.elapsed();
-                    println!("[D-Bus call returned at {:?}]", call_duration);
-                    if let Some(b) = val.child_value(0).get::<Vec<u8>>() {
-                        if let Ok(app::PostRunAction::Stdout(out_data)) =
-                            serde_json::from_slice::<app::PostRunAction>(&b)
-                        {
-                            let mut out = io::stdout().lock();
-                            let _ = out.write_all(&out_data);
-                            let _ = out.flush();
+            ).is_ok();
+
+            if has_owner {
+                let payload = read_init_data(args.clone());
+                let serialized = serde_json::to_vec(&payload).unwrap();
+                let bytes = glib::Bytes::from_owned(serialized);
+                let msg = glib::Variant::from_bytes::<(Vec<u8>,)>(&bytes);
+
+                let dbus_connect_duration = time.elapsed();
+                println!("[D-Bus connection established at {:?}]", dbus_connect_duration);
+
+                match conn.call_sync(
+                    Some("org.anyrun.anyrun"),
+                    "/org/anyrun/anyrun",
+                    "org.anyrun.Anyrun",
+                    "Show",
+                    Some(&msg),
+                    None,
+                    gio::DBusCallFlags::NO_AUTO_START,
+                    -1,
+                    None::<&gio::Cancellable>,
+                ) {
+                    Ok(val) => {
+                        let call_duration = time.elapsed();
+                        println!("[D-Bus call returned at {:?}]", call_duration);
+                        if let Some(b) = val.child_value(0).get::<Vec<u8>>() {
+                            if let Ok(app::PostRunAction::Stdout(out_data)) =
+                                serde_json::from_slice::<app::PostRunAction>(&b)
+                            {
+                                let mut out = io::stdout().lock();
+                                let _ = out.write_all(&out_data);
+                                let _ = out.flush();
+                            }
                         }
+                        let duration = time.elapsed();
+                        println!("[Client finished via sync IPC at {:?}]", duration);
+                        return;
                     }
-                    let duration = time.elapsed();
-                    println!("[Client finished via sync IPC at {:?}]", duration);
-                    return;
-                }
-                Err(_err) => {
-                    // Daemon is not running or failed, fallback to starting as primary instance
+                    Err(err) => {
+                        eprintln!("Daemon communication failed: {err}");
+                        return;
+                    }
                 }
             }
         }
