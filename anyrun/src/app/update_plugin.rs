@@ -93,9 +93,20 @@ impl App {
 
         self.apply_results_layout(widgets, root);
 
+        // Show empty state when settle completed and no results for a non-empty query
+        let has_results = !self.matches.is_empty();
+        let query_non_empty = !self.current_input.trim().is_empty();
+        if has_results {
+            widgets.empty_state().set_visible(false);
+        }
+
         if self.settle_query_sent {
             self.settle_query_sent = false;
             self.clear_pending_visual_state(widgets);
+            // Show empty state only after settle phase completes with no results
+            if !has_results && query_non_empty {
+                widgets.empty_state().set_visible(true);
+            }
         }
 
         if !self.matches_entered {

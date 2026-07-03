@@ -280,6 +280,19 @@ impl App {
                 self.last_visible_count = 0;
                 self.last_flush_hash = 1;
                 self.current_input = text.clone();
+
+                // Toggle clear button visibility
+                widgets.entry().set_icon_from_icon_name(
+                    gtk::EntryIconPosition::Secondary,
+                    if text.is_empty() {
+                        None
+                    } else {
+                        Some("edit-clear-symbolic")
+                    },
+                );
+
+                // Hide empty state on new input (will be shown after settle if no results)
+                widgets.empty_state().set_visible(false);
                 self.search_epoch = self.search_epoch.wrapping_add(1);
                 self.settle_animation_epoch = None;
                 self.settled_once = false;

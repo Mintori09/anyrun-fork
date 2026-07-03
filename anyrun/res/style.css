@@ -230,3 +230,32 @@ label.footer.count {
 label.footer.hints {
   color: rgba(255, 255, 255, 0.5);
 }
+
+/* ── Empty state (no results) ────────────────────────────── */
+box.empty-state {
+  padding: 32px 16px;
+  opacity: 0.6;
+}
+
+label.empty-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: @fg-muted;
+}
+
+label.empty-subtitle {
+  font-size: 12px;
+  font-weight: 400;
+  color: @fg-muted;
+  opacity: 0.7;
+}
+
+/* ── Clear button on entry ───────────────────────────────── */
+entry image.secondary {
+  opacity: 0.4;
+  transition: opacity 80ms ease;
+}
+
+entry image.secondary:hover {
+  opacity: 1.0;
+}
