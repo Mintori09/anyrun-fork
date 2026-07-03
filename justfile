@@ -39,7 +39,8 @@ test target="all":
 
 run:
     just build bin
-    ./target/release/anyrun --provider ./target/release/anyrun-provider
+    ./target/release/anyrun --provider ./target/release/anyrun-provider daemon &
+    ./target/release/anyrun
 
 daemon:
     just build all

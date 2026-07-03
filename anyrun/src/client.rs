@@ -56,6 +56,9 @@ pub fn run_client(args: Args) {
             let bytes = glib::Bytes::from_owned(serialized);
             let msg = glib::Variant::from_bytes::<(Vec<u8>,)>(&bytes);
 
+            let dbus_connect_duration = time.elapsed();
+            println!("[D-Bus connection established at {:?}]", dbus_connect_duration);
+
             match conn.call_sync(
                 Some("org.anyrun.anyrun"),
                 "/org/anyrun/anyrun",
@@ -68,6 +71,8 @@ pub fn run_client(args: Args) {
                 None::<&gio::Cancellable>,
             ) {
                 Ok(val) => {
+                    let call_duration = time.elapsed();
+                    println!("[D-Bus call returned at {:?}]", call_duration);
                     if let Some(b) = val.child_value(0).get::<Vec<u8>>() {
                         if let Ok(app::PostRunAction::Stdout(out_data)) =
                             serde_json::from_slice::<app::PostRunAction>(&b)
