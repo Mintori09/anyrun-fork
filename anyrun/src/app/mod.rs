@@ -158,6 +158,26 @@ impl Component for App {
                     }
                 },
 
+                #[name = "_empty_state"]
+                gtk::Box {
+                    set_css_classes: &["empty-state"],
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_halign: gtk::Align::Center,
+                    set_valign: gtk::Align::Center,
+                    set_spacing: 4,
+                    set_visible: false,
+
+                    gtk::Label {
+                        set_css_classes: &["empty-title"],
+                        set_label: "No matching results",
+                    },
+
+                    gtk::Label {
+                        set_css_classes: &["empty-subtitle"],
+                        set_label: "Try a different search term",
+                    },
+                },
+
                 #[name = "_footer"]
                 gtk::Box {
                     set_css_classes: &["footer"],
@@ -201,6 +221,20 @@ impl Component for App {
         widgets
             .entry()
             .set_icon_from_icon_name(EntryIconPosition::Primary, Some("system-search-symbolic"));
+
+        // Clear button: hidden initially, shown when entry has text
+        widgets
+            .entry()
+            .set_icon_activatable(EntryIconPosition::Secondary, true);
+        widgets
+            .entry()
+            .set_icon_sensitive(EntryIconPosition::Secondary, true);
+
+        widgets.entry().connect_icon_release(|entry, pos| {
+            if pos == EntryIconPosition::Secondary {
+                entry.set_text("");
+            }
+        });
 
         ComponentParts { model, widgets }
     }
@@ -249,5 +283,8 @@ impl AppWidgets {
     }
     pub(super) fn search_progress(&self) -> &gtk::Box {
         &self._search_progress
+    }
+    pub(super) fn empty_state(&self) -> &gtk::Box {
+        &self._empty_state
     }
 }
