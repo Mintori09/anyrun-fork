@@ -45,7 +45,7 @@ impl DaemonProcess {
             cmd.env(k, v);
         }
 
-        let mut child = cmd.spawn()
+        let child = cmd.spawn()
             .expect("Failed to spawn anyrun daemon");
 
         dbus::wait_for_bus_name(&dbus_address, BUS_NAME).await;

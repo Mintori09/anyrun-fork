@@ -5,6 +5,7 @@ pub mod mock;
 pub mod process;
 pub mod temp;
 
+#[allow(unused_imports)]
 pub use env::set_headless_env;
 
 use std::process::Command;
