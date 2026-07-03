@@ -314,7 +314,10 @@ mod tests {
             ..Default::default()
         };
         config.merge_opt(args);
-        assert_eq!(config.plugins, vec![PathBuf::from("/usr/lib/anyrun/foo.so")]);
+        assert_eq!(
+            config.plugins,
+            vec![PathBuf::from("/usr/lib/anyrun/foo.so")]
+        );
     }
 
     #[test]

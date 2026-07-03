@@ -44,6 +44,7 @@ pub struct App {
     pub(super) last_flush_hash: u64,
     pub(super) show_shortcuts: bool,
     pub(super) plugin_health: HashMap<String, anyrun_provider_ipc::PluginHealth>,
+    pub(super) last_css_check: Option<std::time::Instant>,
 }
 
 #[derive(Debug, Clone)]

@@ -172,6 +172,7 @@ impl App {
             last_flush_hash: 1,
             show_shortcuts: false,
             plugin_health: std::collections::HashMap::new(),
+            last_css_check: None,
         };
 
         (model, config, config_dir, css_provider, matches_list)

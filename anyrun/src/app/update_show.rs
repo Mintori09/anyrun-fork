@@ -87,23 +87,32 @@ impl App {
         // Re-load CSS if in daemon mode to support hot-reload
         if self.is_daemon {
             if let Some(config_dir) = &self.config_dir {
-                let path = format!("{config_dir}/style.css");
-                if let Ok(metadata) = fs::metadata(&path) {
-                    let should_reload = match (metadata.modified(), self.last_css_load) {
-                        (Ok(m), Some(last)) => m > last,
-                        _ => true,
-                    };
+                let now = std::time::Instant::now();
+                let should_check = self
+                    .last_css_check
+                    .map(|last| now.duration_since(last) > std::time::Duration::from_secs(2))
+                    .unwrap_or(true);
 
-                    if should_reload {
-                        if let Ok(style) = fs::read_to_string(&path) {
-                            self.css_provider.load_from_string(&style);
-                            self.last_css_load = Some(std::time::SystemTime::now());
+                if should_check {
+                    self.last_css_check = Some(now);
+                    let path = format!("{config_dir}/style.css");
+                    if let Ok(metadata) = fs::metadata(&path) {
+                        let should_reload = match (metadata.modified(), self.last_css_load) {
+                            (Ok(m), Some(last)) => m > last,
+                            _ => true,
+                        };
+
+                        if should_reload {
+                            if let Ok(style) = fs::read_to_string(&path) {
+                                self.css_provider.load_from_string(&style);
+                                self.last_css_load = Some(std::time::SystemTime::now());
+                            }
                         }
+                    } else if self.last_css_load.is_none() {
+                        // Only load default if we haven't loaded anything yet
+                        self.css_provider.load_from_string(DEFAULT_CSS);
+                        self.last_css_load = Some(std::time::SystemTime::now());
                     }
-                } else if self.last_css_load.is_none() {
-                    // Only load default if we haven't loaded anything yet
-                    self.css_provider.load_from_string(DEFAULT_CSS);
-                    self.last_css_load = Some(std::time::SystemTime::now());
                 }
             }
         }
