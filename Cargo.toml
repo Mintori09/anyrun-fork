@@ -29,6 +29,9 @@ members = [
   "anyrun-provider",
   "anyrun-provider/anyrun-provider-ipc",
   "plugins/anyrun-bluetooth",
+  "tests/mock-plugins/basic",
+  "tests/mock-plugins/panic-init",
+  "tests/mock-plugins/hang-query",
   # "plugins/plugin-sample",
 ]
 resolver = "2"
