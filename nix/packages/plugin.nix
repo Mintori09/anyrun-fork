@@ -59,7 +59,7 @@ rustPlatform.buildRustPackage {
   ];
 
   copyLibs = true;
-  cargoBuildFlags = [ "-p ${name}" ];
+  cargoBuildFlags = [ "-p ${pname}" ];
   buildAndTestSubdir = "plugins/${name}";
 
   CARGO_BUILD_INCREMENTAL = "false";
