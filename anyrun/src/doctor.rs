@@ -248,7 +248,10 @@ mod tests {
         let report = inspect_config_dir(&root);
         assert_eq!(report.required_failures, 0);
         assert!(report.lines.iter().any(|l| l.contains("config ok")));
-        assert!(report.lines.iter().any(|l| l.contains("provider ok: built-in")));
+        assert!(report
+            .lines
+            .iter()
+            .any(|l| l.contains("provider ok: built-in")));
         let _ = fs::remove_dir_all(root);
     }
 
@@ -275,11 +278,7 @@ mod tests {
     fn doctor_multiple_failures_accumulate() {
         let root = temp_dir();
         fs::create_dir_all(root.join("plugins")).unwrap();
-        fs::write(
-            root.join("config.ron"),
-            r#"(plugins: ["p1", "p2"])"#,
-        )
-        .unwrap();
+        fs::write(root.join("config.ron"), r#"(plugins: ["p1", "p2"])"#).unwrap();
         let report = inspect_config_dir(&root);
         // p1 missing + p2 missing = 2
         assert_eq!(report.required_failures, 2);

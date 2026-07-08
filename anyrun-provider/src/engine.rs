@@ -1,12 +1,10 @@
 use anyrun_interface::{HandleResult, Match, PluginInfo, PluginRef, abi_stable};
-use anyrun_provider_ipc::{
-    PluginHealth, PluginHealthState, RecentMatch, Request, Response,
-};
+use anyrun_provider_ipc::{PluginHealth, PluginHealthState, RecentMatch, Request, Response};
+use bincode;
 use chrono::{DateTime, Utc};
 use notify::RecommendedWatcher;
 use notify_debouncer_mini::{Debouncer, new_debouncer};
 use serde::{Deserialize, Serialize};
-use bincode;
 use std::collections::HashMap;
 use std::env;
 use std::fs;

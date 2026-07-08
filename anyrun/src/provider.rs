@@ -22,8 +22,6 @@ fn expand_tilde(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
-
-
 pub fn worker_inproc(
     config: Arc<Config>,
     config_dir: Option<String>,
@@ -82,4 +80,3 @@ pub fn worker_inproc(
 
     Ok(())
 }
-
