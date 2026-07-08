@@ -8,6 +8,7 @@
   gtk4-layer-shell,
   pkg-config,
   librsvg,
+  libadwaita,
   cargo,
   rustc,
   # Additional configuration arguments for the
@@ -60,6 +61,7 @@ rustPlatform.buildRustPackage {
     glib
     gtk4
     librsvg
+    libadwaita
     gtk4-layer-shell
   ];
 
