@@ -37,7 +37,7 @@ Anyrun links statically against these libraries. Install the development package
 - `gdk-pixbuf2` (libgdk_pixbuf-2.0)
 - `glib2` (libgobject-2.0 libgio-2.0 libglib-2.0)
 
-> **Important**: Since 25.12.0, Anyrun also requires `anyrun-provider` as a companion binary (search backend). Set its path via the `provider` config option if not in `$PATH`.
+> **Important**: Anyrun is built as a single, self-contained binary. The companion search engine (`anyrun-provider`) is now embedded directly in the main `anyrun` executable. A separate `anyrun-provider` binary is no longer required for installation or runtime.
 
 ## Installation
 
@@ -56,7 +56,6 @@ mkdir -p ~/.config/anyrun/plugins
 # Copy plugins and binaries
 cp target/release/*.so ~/.config/anyrun/plugins
 sudo cp target/release/anyrun /usr/bin/anyrun
-sudo cp target/release/anyrun-provider /usr/bin/anyrun-provider
 
 # Copy default config and style
 cp examples/config.ron ~/.config/anyrun/config.ron
