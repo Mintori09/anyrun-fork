@@ -2,6 +2,6 @@
 unmaintained = "workspace"
 ignore = [
   { id = "RUSTSEC-2025-0141", reason = "Temporary: anyrun-provider-ipc still uses bincode; planned codec migration tracked separately. Review by 2026-08-31." },
-  { id = "RUSTSEC-2024-0014", reason = "Transitive via abi_stable. No maintained replacement in current plugin ABI stack. Review by 2026-08-31." },
-  { id = "RUSTSEC-2024-0436", reason = "Transitive via abi_stable. No direct dependency in workspace crates. Review by 2026-08-31." },
+  { id = "RUSTSEC-2026-0194", reason = "Transitive via wayland-scanner 0.31.x → quick-xml 0.39.x. wayland-scanner only parses official Wayland protocol XML at build time (trusted input, not user-supplied). wayland-rs ecosystem pins ~0.39; no upstream fix yet. Review by 2027-07-08." },
+  { id = "RUSTSEC-2026-0195", reason = "Transitive via wayland-scanner 0.31.x → quick-xml 0.39.x. wayland-scanner only parses official Wayland protocol XML at build time (trusted input, not user-supplied). wayland-rs ecosystem pins ~0.39; no upstream fix yet. Review by 2027-07-08." },
 ]
