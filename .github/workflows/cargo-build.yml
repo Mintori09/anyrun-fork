@@ -13,36 +13,27 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: cachix/install-nix-action@v31
         with:
-          components: rust-src, clippy, rustfmt
+          nix_path: nixpkgs=channel:nixos-unstable
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Format check
+        run: nix develop -c cargo fmt --all --check
 
-      - name: Install GTK dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libglib2.0-dev gobject-introspection libgirepository1.0-dev meson ninja-build valac libdbus-1-dev pkg-config
-          git clone --depth 1 https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
-          cd /tmp/gtk4-layer-shell
-          meson setup build
-          ninja -C build
-          sudo ninja -C build install
+      - name: Clippy check
+        run: nix develop -c cargo clippy --workspace -- -D warnings
 
-      - run: cargo fmt --all --check
-
-      - run: cargo clippy --workspace -- -D warnings
-
-      - run: cargo build --verbose
+      - name: Build
+        run: nix develop -c cargo build --verbose
 
       - name: Run unit tests
-        run: cargo test --workspace --bins --lib --verbose
+        run: nix develop -c cargo test --workspace --bins --lib --verbose
 
       - name: Run non-GUI integration tests
-        run: cargo test -p anyrun-provider --test ipc_e2e --verbose
+        run: nix develop -c cargo test -p anyrun-provider --test ipc_e2e --verbose
