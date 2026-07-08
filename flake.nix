@@ -61,18 +61,30 @@
               # Expose each plugin as a separate package. This uses the mkPlugin function
               # to call the same derivation with same default inherits and the name of the
               # plugin every time.
-              applications = mkPlugin "applications";
+              anyrun-applications = mkPlugin "anyrun-applications";
+              anyrun-bluetooth = mkPlugin "anyrun-bluetooth";
+              anyrun-browser = mkPlugin "anyrun-browser";
+              anyrun-calc = mkPlugin "anyrun-calc";
+              anyrun-findfiles = mkPlugin "anyrun-findfiles";
+              anyrun-git-projects = mkPlugin "anyrun-git-projects";
+              anyrun-kde-setting = mkPlugin "anyrun-kde-setting";
+              anyrun-shell-wrapper = mkPlugin "anyrun-shell-wrapper";
+              anyrun-shell-wrapper-once = mkPlugin "anyrun-shell-wrapper-once";
+              anyrun-sync-manager = mkPlugin "anyrun-sync-manager";
+              anyrun-universal-action = mkPlugin "anyrun-universal-action";
+              anyrun-websearch = mkPlugin "anyrun-websearch";
+              anyrun-zoxide = mkPlugin "anyrun-zoxide";
+
               dictionary = mkPlugin "dictionary";
+              kde-clipboard = mkPlugin "kde-clipboard";
               kidex = mkPlugin "kidex";
+              kill-port = mkPlugin "kill-port";
               nix-run = mkPlugin "nix-run";
               randr = mkPlugin "randr";
-              rink = mkPlugin "rink";
-              shell = mkPlugin "shell";
               stdin = mkPlugin "stdin";
               symbols = mkPlugin "symbols";
               translate = mkPlugin "translate";
-              websearch = mkPlugin "websearch";
-              niri-focus = mkPlugin "niri-focus";
+              window-switcher = mkPlugin "window-switcher";
 
               default = self'.packages.anyrun;
             };

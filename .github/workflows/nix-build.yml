@@ -33,15 +33,29 @@ jobs:
       matrix:
         package:
           - anyrun
-          - applications
+          - anyrun-applications
+          - anyrun-bluetooth
+          - anyrun-browser
+          - anyrun-calc
+          - anyrun-findfiles
+          - anyrun-git-projects
+          - anyrun-kde-setting
+          - anyrun-shell-wrapper
+          - anyrun-shell-wrapper-once
+          - anyrun-sync-manager
+          - anyrun-universal-action
+          - anyrun-websearch
+          - anyrun-zoxide
           - dictionary
+          - kde-clipboard
           - kidex
+          - kill-port
+          - nix-run
           - randr
-          - rink
-          - shell
           - stdin
           - symbols
-          - websearch
+          - translate
+          - window-switcher
     steps:
       - uses: easimon/maximize-build-space@v10
         with:
