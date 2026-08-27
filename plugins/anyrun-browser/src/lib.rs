@@ -255,9 +255,10 @@ fn handler(selection: Match, state: &State) -> HandleResult {
         if let Some(ref class) = state.config.focus_class {
             focus_to_class(class);
         } else {
-            let client_prefix = tab_id_str.split('.').next();
-            if let Some(prefix) = client_prefix {
+            if let Some(prefix) = tab_id_str.split('.').next() {
+                // Look up the browser name first so it stays alive in this scope
                 if let Some(browser_name) = fetch_client_browser(&state.full_path, prefix) {
+                    // Now browser_name is valid for this entire block
                     let candidates = get_browser_class_priority(&browser_name);
                     focus_first_matching_class(candidates);
                 }

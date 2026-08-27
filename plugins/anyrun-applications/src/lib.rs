@@ -33,7 +33,6 @@ impl Default for Config {
     }
 }
 
-/// Cấu trúc dữ liệu đã được tối ưu cho tìm kiếm
 pub struct SearchableEntry {
     id: u64,
     name_lc: String,
@@ -114,13 +113,16 @@ pub fn init(config_dir: RString) -> State {
 
     let mut raw_entries = scrubber::scrubber(&config).unwrap_or_default();
 
-    // Thêm các custom scripts
     let custom_actions = [
         ("Shutdown", "systemctl poweroff", "system-shutdown"),
         ("Reboot", "systemctl reboot", "system-reboot"),
-        ("Lock Screen", "swaylock", "system-lock-screen"),
+        ("Lock Screen", "loginctl lock-session", "system-lock-screen"),
         ("Suspend", "systemctl suspend", "system-suspend"),
-        ("Logout", "hyprctl dispatch exit", "system-log-out"),
+        (
+            "Logout",
+            "qdbus6 org.kde.Shutdown /Shutdown logout",
+            "system-log-out",
+        ),
     ];
 
     let next_id = raw_entries.iter().map(|(_, id)| *id).max().unwrap_or(0) + 1;
@@ -141,7 +143,6 @@ pub fn init(config_dir: RString) -> State {
         raw_entries.push((entry, next_id));
     }
 
-    // Tối ưu I/O: Tìm terminal khả dụng 1 lần duy nhất
     let cached_terminal = config.terminal.clone().or_else(|| {
         let candidates = [
             ("alacritty", "-e {}"),

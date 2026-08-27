@@ -3,7 +3,7 @@ use anyrun_plugin::*;
 
 #[init]
 fn init(_: RString) -> () {
-    panic!("mock panic in init");
+    panic!("mock ic in init");
 }
 
 #[info]
