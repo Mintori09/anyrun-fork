@@ -140,12 +140,11 @@ fn get_matches(input: RString, state: &mut State) -> RVec<Match> {
 
     state.runtime.block_on(async {
         let requests = candidate_pairs.into_iter().map(|(src, dest)| {
-            let url = build_api_url(src.map(|l| l.code), dest.code, text);
+            let src_code = src.map(|l| l.code);
+            let dest_code = dest.code;
             let dest_name = dest.name;
             async move {
-                let response = client.get(url).send().await.ok()?;
-                let json: Value = response.json().await.ok()?;
-                parse_translation_match(json, dest_name, languages)
+                fetch_translation(client, src_code, dest_code, dest_name, text, languages).await
             }
         });
 
@@ -163,6 +162,53 @@ fn handler(selection: Match, state: &State) -> HandleResult {
         execute_command(exit_cmd);
     }
     HandleResult::Copy(selection.title.into_bytes())
+}
+
+async fn fetch_translation(
+    client: &Client,
+    src_code: Option<&str>,
+    dest_code: &str,
+    dest_name: &str,
+    text: &str,
+    languages: &[Language],
+) -> Option<Match> {
+    // 1. Primary: Google Translate API
+    let google_url = build_google_url(src_code, dest_code, text);
+    if let Ok(response) = client.get(&google_url).send().await {
+        if response.status().is_success() {
+            if let Ok(json) = response.json::<Value>().await {
+                if let Some(m) = parse_google_match(json, dest_name, languages) {
+                    return Some(m);
+                }
+            }
+        }
+    }
+
+    // 2. Backup 1: MyMemory API
+    let mymemory_url = build_mymemory_url(src_code, dest_code, text);
+    if let Ok(response) = client.get(&mymemory_url).send().await {
+        if response.status().is_success() {
+            if let Ok(json) = response.json::<Value>().await {
+                if let Some(m) = parse_mymemory_match(json, src_code, dest_name, languages) {
+                    return Some(m);
+                }
+            }
+        }
+    }
+
+    // 3. Backup 2: Lingva Translate public instance
+    let lingva_url = build_lingva_url(src_code, dest_code, text);
+    if let Ok(response) = client.get(&lingva_url).send().await {
+        if response.status().is_success() {
+            if let Ok(json) = response.json::<Value>().await {
+                if let Some(m) = parse_lingva_match(json, src_code, dest_name, languages) {
+                    return Some(m);
+                }
+            }
+        }
+    }
+
+    None
 }
 
 fn parse_language_identifiers<'a>(input: &'a str, delimiter: &str) -> (Option<&'a str>, &'a str) {
@@ -201,12 +247,8 @@ fn filter_languages<'a>(languages: &'a [Language], query: &str) -> Vec<&'a Langu
         .collect()
 }
 
-fn build_api_url(src_code: Option<&str>, dest_code: &str, text: &str) -> String {
+fn build_google_url(src_code: Option<&str>, dest_code: &str, text: &str) -> String {
     let sl = src_code.unwrap_or("auto");
-    // dt=t: translation
-    // dt=at: alternative translations
-    // dt=bd: dictionary (parts of speech)
-    // dt=rm: transliteration/pronunciation
     format!(
         "{}&sl={}&tl={}&dt=t&dt=at&dt=bd&dt=rm&q={}",
         GOOGLE_TRANSLATE_API,
@@ -216,7 +258,26 @@ fn build_api_url(src_code: Option<&str>, dest_code: &str, text: &str) -> String 
     )
 }
 
-fn parse_translation_match(json: Value, dest_name: &str, registry: &[Language]) -> Option<Match> {
+fn build_mymemory_url(src_code: Option<&str>, dest_code: &str, text: &str) -> String {
+    let pair = format!("{}|{}", src_code.unwrap_or("autodetect"), dest_code);
+    format!(
+        "https://api.mymemory.translated.net/get?q={}&langpair={}",
+        urlencoding::encode(text),
+        pair
+    )
+}
+
+fn build_lingva_url(src_code: Option<&str>, dest_code: &str, text: &str) -> String {
+    let sl = src_code.unwrap_or("auto");
+    format!(
+        "https://lingva.ml/api/v1/{}/{}/{}",
+        sl,
+        dest_code,
+        urlencoding::encode(text)
+    )
+}
+
+fn parse_google_match(json: Value, dest_name: &str, registry: &[Language]) -> Option<Match> {
     // 1. Extract the main translation text
     let translation = json[0]
         .as_array()?
@@ -261,6 +322,55 @@ fn parse_translation_match(json: Value, dest_name: &str, registry: &[Language]) 
             )
             .into(),
         ),
+        use_pango: false,
+        icon: ROption::RNone,
+        id: ROption::RNone,
+    })
+}
+
+fn parse_mymemory_match(
+    json: Value,
+    src_code: Option<&str>,
+    dest_name: &str,
+    registry: &[Language],
+) -> Option<Match> {
+    let response_data = json.get("responseData")?;
+    let translation = response_data.get("translatedText")?.as_str()?;
+    if translation.trim().is_empty() {
+        return None;
+    }
+
+    let src_name = src_code
+        .and_then(|code| registry.iter().find(|l| l.code == code).map(|l| l.name))
+        .unwrap_or("Auto");
+
+    Some(Match {
+        title: translation.to_string().into(),
+        description: ROption::RSome(format!("{} → {} (via MyMemory)", src_name, dest_name).into()),
+        use_pango: false,
+        icon: ROption::RNone,
+        id: ROption::RNone,
+    })
+}
+
+fn parse_lingva_match(
+    json: Value,
+    src_code: Option<&str>,
+    dest_name: &str,
+    registry: &[Language],
+) -> Option<Match> {
+    let translation = json.get("translation")?.as_str()?;
+    if translation.trim().is_empty() {
+        return None;
+    }
+
+    let src_name = src_code
+        .and_then(|code| registry.iter().find(|l| l.code == code).map(|l| l.name))
+        .unwrap_or("Auto");
+
+    Some(Match {
+        title: translation.to_string().into(),
+        description: ROption::RSome(format!("{} → {} (via Lingva)", src_name, dest_name).into()),
         use_pango: false,
         icon: ROption::RNone,
         id: ROption::RNone,
