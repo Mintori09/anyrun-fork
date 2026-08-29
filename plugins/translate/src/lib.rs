@@ -196,12 +196,12 @@ async fn fetch_translation(
         }
     }
 
-    // 3. Backup 2: Lingva Translate public instance
-    let lingva_url = build_lingva_url(src_code, dest_code, text);
-    if let Ok(response) = client.get(&lingva_url).send().await {
+    // 3. Backup 2: Google Chrome Extension endpoint (clients5.google.com)
+    let google_ext_url = build_google_ext_url(src_code, dest_code, text);
+    if let Ok(response) = client.get(&google_ext_url).send().await {
         if response.status().is_success() {
             if let Ok(json) = response.json::<Value>().await {
-                if let Some(m) = parse_lingva_match(json, src_code, dest_name, languages) {
+                if let Some(m) = parse_google_ext_match(json, src_code, dest_name, languages) {
                     return Some(m);
                 }
             }
@@ -267,10 +267,10 @@ fn build_mymemory_url(src_code: Option<&str>, dest_code: &str, text: &str) -> St
     )
 }
 
-fn build_lingva_url(src_code: Option<&str>, dest_code: &str, text: &str) -> String {
+fn build_google_ext_url(src_code: Option<&str>, dest_code: &str, text: &str) -> String {
     let sl = src_code.unwrap_or("auto");
     format!(
-        "https://lingva.ml/api/v1/{}/{}/{}",
+        "https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl={}&tl={}&q={}",
         sl,
         dest_code,
         urlencoding::encode(text)
@@ -353,13 +353,19 @@ fn parse_mymemory_match(
     })
 }
 
-fn parse_lingva_match(
+fn parse_google_ext_match(
     json: Value,
     src_code: Option<&str>,
     dest_name: &str,
     registry: &[Language],
 ) -> Option<Match> {
-    let translation = json.get("translation")?.as_str()?;
+    let translation = json
+        .as_array()?
+        .iter()
+        .filter_map(|segment| segment.as_str())
+        .collect::<Vec<_>>()
+        .join("");
+
     if translation.trim().is_empty() {
         return None;
     }
@@ -369,8 +375,8 @@ fn parse_lingva_match(
         .unwrap_or("Auto");
 
     Some(Match {
-        title: translation.to_string().into(),
-        description: ROption::RSome(format!("{} → {} (via Lingva)", src_name, dest_name).into()),
+        title: translation.into(),
+        description: ROption::RSome(format!("{} → {}", src_name, dest_name).into()),
         use_pango: false,
         icon: ROption::RNone,
         id: ROption::RNone,
