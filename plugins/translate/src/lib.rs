@@ -3,7 +3,9 @@ use anyrun_plugin::*;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::fs;
+use std::process::Command;
 use tokio::runtime::Runtime;
 
 const GOOGLE_TRANSLATE_API: &str = "https://translate.googleapis.com/translate_a/single?client=gtx";
@@ -12,6 +14,10 @@ const GOOGLE_TRANSLATE_API: &str = "https://translate.googleapis.com/translate_a
 struct Config {
     prefix: String,
     language_delimiter: String,
+    #[serde(default)]
+    hooks: HashMap<String, String>,
+    #[serde(default)]
+    on_exit: Option<String>,
 }
 
 impl Default for Config {
@@ -19,6 +25,8 @@ impl Default for Config {
         Self {
             prefix: "".to_string(),
             language_delimiter: ">".to_string(),
+            hooks: HashMap::new(),
+            on_exit: None,
         }
     }
 }
@@ -33,6 +41,11 @@ struct State {
     client: Client,
     runtime: Runtime,
     languages: Vec<Language>,
+    active_hook_key: Option<String>,
+}
+
+fn execute_command(cmd: &str) {
+    let _ = Command::new("sh").arg("-c").arg(cmd).spawn();
 }
 
 #[init]
@@ -48,6 +61,7 @@ fn init(config_dir: RString) -> State {
         client: Client::new(),
         runtime: Runtime::new().expect("Failed to create tokio runtime"),
         languages: get_language_list(),
+        active_hook_key: None,
     }
 }
 
@@ -60,34 +74,78 @@ fn info() -> PluginInfo {
 }
 
 #[get_matches]
-fn get_matches(input: RString, state: &State) -> RVec<Match> {
+fn get_matches(input: RString, state: &mut State) -> RVec<Match> {
     if !input.starts_with(&state.config.prefix) {
+        if state.active_hook_key.is_some() {
+            if let Some(ref exit_cmd) = state.config.on_exit {
+                execute_command(exit_cmd);
+            }
+            state.active_hook_key = None;
+        }
         return RVec::new();
     }
 
     let query = &input[state.config.prefix.len()..];
     let (target_part, text) = match query.split_once(' ') {
         Some(parts) => parts,
-        None => return RVec::new(),
+        None => {
+            if state.active_hook_key.is_some() {
+                if let Some(ref exit_cmd) = state.config.on_exit {
+                    execute_command(exit_cmd);
+                }
+                state.active_hook_key = None;
+            }
+            return RVec::new();
+        }
     };
-
-    if text.is_empty() {
-        return RVec::new();
-    }
 
     let (source_filter, dest_filter) =
         parse_language_identifiers(target_part, &state.config.language_delimiter);
     let candidate_pairs = resolve_language_pairs(&state.languages, source_filter, dest_filter);
 
-    state.runtime.block_on(async move {
+    if candidate_pairs.is_empty() {
+        if state.active_hook_key.is_some() {
+            if let Some(ref exit_cmd) = state.config.on_exit {
+                execute_command(exit_cmd);
+            }
+            state.active_hook_key = None;
+        }
+        return RVec::new();
+    }
+
+    let matched_hook = state
+        .config
+        .hooks
+        .get(target_part)
+        .or_else(|| state.config.hooks.get(dest_filter));
+
+    if let Some(cmd) = matched_hook {
+        if state.active_hook_key.as_deref() != Some(target_part) {
+            execute_command(cmd);
+            state.active_hook_key = Some(target_part.to_string());
+        }
+    } else if state.active_hook_key.is_some() {
+        if let Some(ref exit_cmd) = state.config.on_exit {
+            execute_command(exit_cmd);
+        }
+        state.active_hook_key = None;
+    }
+
+    if text.is_empty() {
+        return RVec::new();
+    }
+
+    let client = &state.client;
+    let languages = &state.languages;
+
+    state.runtime.block_on(async {
         let requests = candidate_pairs.into_iter().map(|(src, dest)| {
             let url = build_api_url(src.map(|l| l.code), dest.code, text);
-            let client = &state.client;
             let dest_name = dest.name;
             async move {
                 let response = client.get(url).send().await.ok()?;
                 let json: Value = response.json().await.ok()?;
-                parse_translation_match(json, dest_name, &state.languages)
+                parse_translation_match(json, dest_name, languages)
             }
         });
 
@@ -100,7 +158,10 @@ fn get_matches(input: RString, state: &State) -> RVec<Match> {
 }
 
 #[handler]
-fn handler(selection: Match) -> HandleResult {
+fn handler(selection: Match, state: &State) -> HandleResult {
+    if let Some(ref exit_cmd) = state.config.on_exit {
+        execute_command(exit_cmd);
+    }
     HandleResult::Copy(selection.title.into_bytes())
 }
 
